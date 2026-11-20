@@ -783,9 +783,173 @@ export function createFerrariMesh(color = 0xe11d48, accentColor = 0x0f172a) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 5. APEX GT SUPERCAR (REDESIGNED PLAYER SPORTS CAR)
+// ─────────────────────────────────────────────────────────────────────────────
+export function createPlayerSupercarMesh(bodyColor = 0xe11d48, accentColor = 0x0f172a) {
+  const car = new THREE.Group();
+
+  const matBody = new THREE.MeshStandardMaterial({
+    color: bodyColor,
+    roughness: 0.28,
+    metalness: 0.55,
+    flatShading: true,
+  });
+
+  const matCarbon = new THREE.MeshStandardMaterial({
+    color: 0x18181b,
+    roughness: 0.35,
+    metalness: 0.65,
+    flatShading: true,
+  });
+
+  const matGlass = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    roughness: 0.08,
+    metalness: 0.85,
+    transparent: true,
+    opacity: 0.82,
+  });
+
+  const matChrome = new THREE.MeshStandardMaterial({
+    color: 0xe2e8f0,
+    metalness: 0.95,
+    roughness: 0.12,
+    flatShading: true,
+  });
+
+  const matHeadlight = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xecfeff,
+    emissiveIntensity: 4.5,
+  });
+
+  const matTaillight = new THREE.MeshStandardMaterial({
+    color: 0xff0033,
+    emissive: 0xff0033,
+    emissiveIntensity: 3.5,
+  });
+
+  // 1. Lower Chassis & Aerodynamic Underfloor
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.14, 4.0), matCarbon);
+  chassis.position.set(0, 0.22, 0);
+  chassis.castShadow = true;
+  car.add(chassis);
+
+  // Front Splitter
+  const splitter = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.06, 0.4), matCarbon);
+  splitter.position.set(0, 0.16, 1.95);
+  car.add(splitter);
+
+  // 2. Muscular Low-Poly Main Body
+  const bodyGeo = new THREE.BoxGeometry(1.54, 0.38, 3.82);
+  const body = new THREE.Mesh(bodyGeo, matBody);
+  body.position.set(0, 0.44, 0);
+  body.castShadow = true;
+  car.add(body);
+
+  // Sculpted Sloping Front Hood
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.14, 1.35), matBody);
+  hood.position.set(0, 0.61, 1.15);
+  hood.rotation.x = -0.16;
+  car.add(hood);
+
+  // Carbon Hood Air Heat Extractors
+  const hoodVent = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.04, 0.42), matCarbon);
+  hoodVent.position.set(0, 0.65, 1.05);
+  hoodVent.rotation.x = -0.16;
+  car.add(hoodVent);
+
+  // 3. Cockpit & Fastback Roofline
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.44, 1.78), matBody);
+  cabin.position.set(0, 0.84, -0.12);
+  cabin.castShadow = true;
+  car.add(cabin);
+
+  // Windshield (Front)
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.44, 0.06), matGlass);
+  windshield.position.set(0, 0.88, 0.72);
+  windshield.rotation.x = 0.58;
+  car.add(windshield);
+
+  // Rear Sloping Glass
+  const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.46, 0.06), matGlass);
+  rearGlass.position.set(0, 0.86, -0.98);
+  rearGlass.rotation.x = -0.52;
+  car.add(rearGlass);
+
+  // Side Windows
+  [-0.62, 0.62].forEach(x => {
+    const sideWin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.34, 1.2), matGlass);
+    sideWin.position.set(x, 0.84, -0.12);
+    car.add(sideWin);
+  });
+
+  // 4. Rear GT Wing / Spoiler
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.06, 0.38), matCarbon);
+  wing.position.set(0, 0.98, -1.82);
+  wing.castShadow = true;
+  car.add(wing);
+
+  // Wing Struts
+  [-0.42, 0.42].forEach(x => {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.18), matCarbon);
+    strut.position.set(x, 0.78, -1.8);
+    strut.rotation.x = -0.22;
+    car.add(strut);
+  });
+
+  // 5. Dual Polished Chrome Exhaust Tips (Calibrated mount points for smoke & nitro flames)
+  [-0.35, 0.35].forEach(x => {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.22, 12), matChrome);
+    pipe.rotateX(Math.PI / 2);
+    pipe.position.set(x, 0.32, -1.95);
+    car.add(pipe);
+  });
+
+  // 6. High-Intensity LED Headlights (+Z front)
+  [-0.52, 0.52].forEach(x => {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.09, 0.12), matHeadlight);
+    hl.position.set(x, 0.48, 1.86);
+    car.add(hl);
+  });
+
+  // 7. Full-Width Cyber Taillight Strip (-Z rear)
+  const taillight = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 0.06), matTaillight);
+  taillight.position.set(0, 0.52, -1.92);
+  car.add(taillight);
+
+  // 8. Wheels & Calipers
+  const wheels = {};
+  const wheelPositions = {
+    Wheel_FL: [-0.78, 0.295,  1.22],
+    Wheel_FR: [ 0.78, 0.295,  1.22],
+    Wheel_RL: [-0.78, 0.295, -1.18],
+    Wheel_RR: [ 0.78, 0.295, -1.18],
+  };
+
+  for (const [name, pos] of Object.entries(wheelPositions)) {
+    const wg = createCarWheel('sport', 0xd4d4d8, 0xef4444);
+    wg.position.set(pos[0], pos[1], pos[2]);
+    car.add(wg);
+    wheels[name] = wg;
+  }
+
+  car.userData.wheels = wheels;
+  applyShadows(car);
+  return car;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // REGISTRY OF ALL CAR MODELS
 // ─────────────────────────────────────────────────────────────────────────────
 export const CAR_MODELS = {
+  supercar: {
+    id: 'supercar',
+    name: 'Apex GT Supercar',
+    createMesh: createPlayerSupercarMesh,
+    defaultColor: 0xe11d48,
+    accentColor: 0x0f172a,
+  },
   lamborghini: {
     id: 'lamborghini',
     name: 'Lamborghini Huracan',
@@ -817,6 +981,6 @@ export const CAR_MODELS = {
 };
 
 export function getCarMeshById(id, color, accentColor) {
-  const modelDef = CAR_MODELS[id] || CAR_MODELS.lamborghini;
+  const modelDef = CAR_MODELS[id] || CAR_MODELS.supercar;
   return modelDef.createMesh(color || modelDef.defaultColor, accentColor || modelDef.accentColor);
 }

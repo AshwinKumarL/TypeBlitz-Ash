@@ -6,10 +6,11 @@ export class StraightChaseCamera {
     this.camera = camera;
     this.car = carController;
 
-    // Camera parameters
-    this.baseDistance = 6.8;
-    this.height = 2.4;
-    this.lookAhead = 36.0; // looks down the straight road
+    // Camera parameters: Elevated and angled down so cars appear in upper-middle of screen
+    this.baseDistance = 9.6;
+    this.height = 4.4;
+    this.lookAhead = 38.0; // looks down the straight road
+    this.lookTargetY = 0.35; // centers cars higher on the viewport
 
     this.baseFov = 58;
     this.maxFov = 74;
@@ -22,7 +23,7 @@ export class StraightChaseCamera {
     const carZ = this.car.position.z;
 
     this.camera.position.set(PLAYER_LANE_X, this.height, carZ - this.baseDistance);
-    this.camera.lookAt(PLAYER_LANE_X, 1.1, carZ + this.lookAhead);
+    this.camera.lookAt(PLAYER_LANE_X, this.lookTargetY, carZ + this.lookAhead);
     this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
   }
@@ -33,8 +34,8 @@ export class StraightChaseCamera {
     const carZ = this.car.position.z;
     const speedRatio = THREE.MathUtils.clamp(speedKmh / 150.0, 0, 1);
 
-    const dynDistance = this.baseDistance + speedRatio * 1.6;
-    const dynHeight = this.height + speedRatio * 0.3;
+    const dynDistance = this.baseDistance + speedRatio * 1.5;
+    const dynHeight = this.height + speedRatio * 0.35;
 
     // Follow smoothly along Z, locked in center lane horizontally
     const targetZ = carZ - dynDistance;
@@ -51,8 +52,8 @@ export class StraightChaseCamera {
     this.camera.position.y = dynHeight + shakeY;
     this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetZ, lerpFactor);
 
-    // Look ahead down the straight highway toward the horizon
-    this.camera.lookAt(PLAYER_LANE_X, 1.1, carZ + this.lookAhead);
+    // Look ahead down the straight highway toward the horizon, keeping cars in upper screen
+    this.camera.lookAt(PLAYER_LANE_X, this.lookTargetY, carZ + this.lookAhead);
 
     // Dynamic FOV for speed sensation
     const targetFov = this.baseFov + speedRatio * (this.maxFov - this.baseFov);

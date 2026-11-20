@@ -397,6 +397,61 @@ export class AudioManager {
     osc.stop(now + 0.1);
   }
 
+  playBoostSound() {
+    this._ensureInit();
+    if (!this.audioCtx) return;
+    const ctx = this.audioCtx;
+    const now = ctx.currentTime;
+
+    // 1. Resonant Turbo Flame Whoosh (swept noise)
+    if (this._noiseBuffer) {
+      const src = ctx.createBufferSource();
+      src.buffer = this._noiseBuffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.setValueAtTime(3.0, now);
+      filter.frequency.setValueAtTime(400, now);
+      filter.frequency.exponentialRampToValueAtTime(2400, now + 0.35);
+      filter.frequency.exponentialRampToValueAtTime(800, now + 1.2);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.55, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      src.start(now);
+      src.stop(now + 1.5);
+    }
+
+    // 2. Heavy Jet Thruster Ignition Pitch
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(380, now + 0.4);
+    osc.frequency.exponentialRampToValueAtTime(220, now + 1.2);
+
+    const oscFilter = ctx.createBiquadFilter();
+    oscFilter.type = 'lowpass';
+    oscFilter.frequency.setValueAtTime(800, now);
+
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.0, now);
+    oscGain.gain.linearRampToValueAtTime(0.35, now + 0.1);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 1.3);
+
+    osc.connect(oscFilter);
+    oscFilter.connect(oscGain);
+    oscGain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 1.4);
+  }
+
   playSentenceComplete() {
     this._ensureInit();
     if (!this.audioCtx) return;

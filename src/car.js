@@ -58,6 +58,15 @@ export function createProceduralCarMesh() {
     car.add(tl);
   });
 
+  // Dual Chrome Exhaust Pipes (for flames/smoke)
+  const matExhaust = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.15, flatShading: true });
+  [-0.35, 0.35].forEach(x => {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.28, 8), matExhaust);
+    pipe.rotateX(Math.PI / 2);
+    pipe.position.set(x, 0.32, -1.96);
+    car.add(pipe);
+  });
+
   // 4 Wheels
   const wheelGeo = new THREE.CylinderGeometry(0.295, 0.295, 0.22, 16);
   wheelGeo.rotateZ(Math.PI / 2);
@@ -166,12 +175,33 @@ export class VehicleController {
     this.wheelRadius = 0.295;
     this.wheelSpin = 0;
 
+    // Nitro Boost surge state
+    this.boostTimeRemaining = 0;
+    this.boostBonusSpeed = 0;
+
     this.container.position.copy(this.position);
     this.container.rotation.set(0, 0, 0);
   }
 
+  setCarMesh(newCarMesh) {
+    this.container.clear();
+    this.container.add(newCarMesh);
+    this.container.userData.wheels = newCarMesh.userData.wheels;
+    this.container.userData.tailpipeOffsets = newCarMesh.userData.tailpipeOffsets;
+    this.wheelRadius = newCarMesh.userData.wheelRadius || 0.295;
+    this.carDef = newCarMesh.userData.carDef || null;
+    this._syncMesh();
+  }
+
   getSpeedKmh() {
     return this.speed * 3.6;
+  }
+
+  applyBoost(durationSec = 3.2, speedBonusKmh = 35) {
+    this.boostTimeRemaining = durationSec;
+    this.boostBonusSpeed = speedBonusKmh / 3.6;
+    // Sudden forward kick
+    this.speed = Math.min(this.maxSpeed + 8.0, this.speed + 4.5);
   }
 
   reset() {
@@ -179,6 +209,8 @@ export class VehicleController {
     this.speed = 0;
     this.targetSpeed = 0;
     this.wheelSpin = 0;
+    this.boostTimeRemaining = 0;
+    this.boostBonusSpeed = 0;
     this._syncMesh();
   }
 
@@ -192,14 +224,21 @@ export class VehicleController {
 
   // Delta-time physics step
   step(dt, targetSpeedOverride = null) {
-    const target = (targetSpeedOverride !== null) ? targetSpeedOverride : this.targetSpeed;
+    let target = (targetSpeedOverride !== null) ? targetSpeedOverride : this.targetSpeed;
 
-    if (this.speed < target) {
-      // Accelerate smoothly towards target speed
-      this.speed = Math.min(target, this.speed + this.acceleration * dt);
-    } else if (this.speed > target) {
-      // Decelerate naturally due to friction and drag
-      this.speed = Math.max(target, this.speed - this.deceleration * dt);
+    if (this.boostTimeRemaining > 0) {
+      this.boostTimeRemaining -= dt;
+      target = Math.min(this.maxSpeed + 8.0, target + (this.boostBonusSpeed || 9.0));
+      // Fast surge acceleration
+      this.speed = Math.min(target, this.speed + (this.acceleration * 2.2) * dt);
+    } else {
+      if (this.speed < target) {
+        // Accelerate smoothly towards target speed
+        this.speed = Math.min(target, this.speed + this.acceleration * dt);
+      } else if (this.speed > target) {
+        // Decelerate naturally due to friction and drag
+        this.speed = Math.max(target, this.speed - this.deceleration * dt);
+      }
     }
 
     // Clean complete stop when target is 0 and speed is near zero

@@ -112,44 +112,81 @@ export class StraightWorld {
   }
 
   // -------------------------------------------------------------------------
-  // 4. Distant Mountains and Hills
+  // 4. Distant Mountains and Hills (Faceted Single-Mesh, Zero Z-Fighting)
   // -------------------------------------------------------------------------
   _setupMountains() {
     this.mountainGroup = new THREE.Group();
 
-    const mountainMat = new THREE.MeshStandardMaterial({
-      color: 0x475569, // slate mountain base
-      roughness: 0.95,
-      metalness: 0.1,
-      flatShading: true,
-    });
-    const snowMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, // crisp snowcaps
-      roughness: 0.5,
-      flatShading: true,
-    });
+    // Helper to build a faceted, single-geometry mountain with height-based vertex colors
+    const createLowPolyMountain = (radius, height, segments = 8) => {
+      const geo = new THREE.ConeGeometry(radius, height, segments, 5, false);
+      geo.translate(0, height / 2, 0);
+
+      const pos = geo.attributes.position;
+      const count = pos.count;
+      const colors = new Float32Array(count * 3);
+
+      const cValley = new THREE.Color(0x335c2b); // valley foothills green
+      const cRock = new THREE.Color(0x475569);   // slate granite
+      const cSnow = new THREE.Color(0xffffff);   // crisp snowcap
+
+      for (let i = 0; i < count; i++) {
+        const py = pos.getY(i);
+        const hRatio = Math.max(0, Math.min(1, py / height));
+        const color = new THREE.Color();
+
+        if (hRatio < 0.22) {
+          color.lerpColors(cValley, cRock, hRatio / 0.22);
+        } else if (hRatio < 0.62) {
+          color.copy(cRock);
+        } else {
+          const snowFactor = Math.min(1.0, (hRatio - 0.62) / 0.38);
+          color.lerpColors(cRock, cSnow, snowFactor);
+        }
+
+        colors[i * 3]     = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+      }
+
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        flatShading: true,
+        roughness: 0.88,
+        metalness: 0.08,
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    };
 
     const mountainConfigs = [
-      { x: -600, z: 250, r: 170, h: 280 },
-      { x: -700, z: 700, r: 210, h: 340 },
-      { x: -560, z: 1150, r: 160, h: 260 },
-      { x: -660, z: 1550, r: 190, h: 320 },
-      { x: 600, z: 350, r: 160, h: 260 },
-      { x: 720, z: 800, r: 210, h: 340 },
-      { x: 580, z: 1250, r: 170, h: 280 },
-      { x: 680, z: 1680, r: 210, h: 340 },
+      // Left side mountain range (foreground & midground)
+      { x: -580, z: 200,  r: 160, h: 260, segs: 9 },
+      { x: -720, z: 550,  r: 220, h: 340, segs: 8 },
+      { x: -540, z: 900,  r: 150, h: 240, segs: 7 },
+      { x: -680, z: 1250, r: 210, h: 330, segs: 9 },
+      { x: -600, z: 1650, r: 180, h: 290, segs: 8 },
+      { x: -750, z: 2050, r: 230, h: 350, segs: 9 },
+
+      // Right side mountain range
+      { x:  580, z: 300,  r: 160, h: 250, segs: 8 },
+      { x:  720, z: 650,  r: 220, h: 340, segs: 9 },
+      { x:  550, z: 1050, r: 150, h: 230, segs: 7 },
+      { x:  700, z: 1450, r: 210, h: 330, segs: 8 },
+      { x:  620, z: 1850, r: 190, h: 300, segs: 9 },
+      { x:  740, z: 2250, r: 240, h: 360, segs: 8 },
     ];
 
     mountainConfigs.forEach(m => {
-      const geo = new THREE.ConeGeometry(m.r, m.h, 7);
-      const mesh = new THREE.Mesh(geo, mountainMat);
-      mesh.position.set(m.x, m.h / 2, m.z);
+      const mesh = createLowPolyMountain(m.r, m.h, m.segs);
+      mesh.position.set(m.x, 0, m.z);
       this.mountainGroup.add(mesh);
-
-      const snowGeo = new THREE.ConeGeometry(m.r * 0.4, m.h * 0.4, 7);
-      const snow = new THREE.Mesh(snowGeo, snowMat);
-      snow.position.set(m.x, m.h - (m.h * 0.4) / 2, m.z);
-      this.mountainGroup.add(snow);
     });
 
     this.scene.add(this.mountainGroup);
@@ -161,7 +198,7 @@ export class StraightWorld {
   _setupChunks() {
     this.chunks = [];
 
-    // Shared Materials
+    // Shared Materials with Polygon Offsets to completely eliminate depth-buffer Z-fighting
     this.matAsphalt = new THREE.MeshStandardMaterial({
       color: 0x1f242c, // smooth dark highway asphalt
       roughness: 0.78,
@@ -169,11 +206,20 @@ export class StraightWorld {
       flatShading: true,
     });
 
-    this.matWhiteLine = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.matWhiteLine = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      polygonOffset: true,
+      polygonOffsetFactor: -3.0,
+      polygonOffsetUnits: -6.0,
+    });
+
     this.matShoulder = new THREE.MeshStandardMaterial({
       color: 0x524e46,
       roughness: 0.9,
       flatShading: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.0,
+      polygonOffsetUnits: -2.0,
     });
 
     this.matTrunk = new THREE.MeshStandardMaterial({ color: 0x452b1a, roughness: 0.95, flatShading: true });
@@ -198,11 +244,11 @@ export class StraightWorld {
   _createChunkMesh() {
     const group = new THREE.Group();
 
-    // 1. Asphalt Road Surface (20m wide highway, flush at y = 0.005)
+    // 1. Asphalt Road Surface (20m wide highway, flush at y = 0.02)
     const roadGeo = new THREE.PlaneGeometry(ROAD_WIDTH, CHUNK_LENGTH);
     const roadMesh = new THREE.Mesh(roadGeo, this.matAsphalt);
     roadMesh.rotation.x = -Math.PI / 2;
-    roadMesh.position.set(0, 0.005, CHUNK_LENGTH / 2);
+    roadMesh.position.set(0, 0.02, CHUNK_LENGTH / 2);
     roadMesh.receiveShadow = true;
     group.add(roadMesh);
 
@@ -212,7 +258,7 @@ export class StraightWorld {
     [-ROAD_HALF_WIDTH - shoulderWidth / 2, ROAD_HALF_WIDTH + shoulderWidth / 2].forEach(x => {
       const sMesh = new THREE.Mesh(shoulderGeo, this.matShoulder);
       sMesh.rotation.x = -Math.PI / 2;
-      sMesh.position.set(x, 0.006, CHUNK_LENGTH / 2);
+      sMesh.position.set(x, 0.024, CHUNK_LENGTH / 2);
       group.add(sMesh);
     });
 
@@ -221,7 +267,7 @@ export class StraightWorld {
     [-ROAD_HALF_WIDTH + 0.3, ROAD_HALF_WIDTH - 0.3].forEach(x => {
       const edgeLine = new THREE.Mesh(edgeLineGeo, this.matWhiteLine);
       edgeLine.rotation.x = -Math.PI / 2;
-      edgeLine.position.set(x, 0.008, CHUNK_LENGTH / 2);
+      edgeLine.position.set(x, 0.032, CHUNK_LENGTH / 2);
       group.add(edgeLine);
     });
 
@@ -238,7 +284,7 @@ export class StraightWorld {
       for (let d = 0; d < numDashes; d++) {
         const dashMesh = new THREE.Mesh(dashGeo, this.matWhiteLine);
         dashMesh.rotation.x = -Math.PI / 2;
-        dashMesh.position.set(divX, 0.008, d * dashSpacing + dashLength / 2 + 2.0);
+        dashMesh.position.set(divX, 0.032, d * dashSpacing + dashLength / 2 + 2.0);
         group.add(dashMesh);
       }
     });

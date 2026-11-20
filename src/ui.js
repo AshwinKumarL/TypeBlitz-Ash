@@ -359,39 +359,73 @@ export class UIController {
     this.hudRoot.appendChild(topRight);
 
     // ───────────────────────────────────────────────────────────────────────
-    // BOTTOM CENTER: Modern Typing Interface
+    // BOTTOM STREAMLINED RIBBON: Unobstructed Typing Interface at Bottom
+    // (Cars and highway remain 100% visible in the upper-middle screen!)
     // ───────────────────────────────────────────────────────────────────────
-    const bottomCenter = el('div', {
+    const typingRibbonWrapper = el('div', {
+      id: 'typing-ribbon-wrapper',
       style: {
         position: 'absolute',
-        bottom: '36px',
+        bottom: '22px',
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: '10px',
-        maxWidth: '850px',
+        gap: '6px',
+        maxWidth: '820px',
         width: '90%',
+        pointerEvents: 'none',
       },
     });
+
+    // Multi-Level Nitro Boost Banner (floats right above typing box)
+    this.boostBannerEl = el('div', {
+      id: 'boost-banner',
+      style: {
+        display: 'none',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '5px 18px',
+        background: 'linear-gradient(90deg, rgba(239, 68, 68, 0.92), rgba(245, 158, 11, 0.92))',
+        border: '1px solid #ffea00',
+        borderRadius: '20px',
+        boxShadow: '0 0 20px rgba(239, 68, 68, 0.8), 0 0 35px rgba(245, 158, 11, 0.6)',
+        color: '#ffffff',
+        fontFamily: FONT_ORBITRON,
+        fontSize: '12px',
+        fontWeight: '900',
+        letterSpacing: '2px',
+        textTransform: 'uppercase',
+        textShadow: '0 0 8px #fff',
+        transition: 'all 0.2s ease',
+      },
+    });
+    this.boostBannerEl.innerHTML = '🔥 NITRO BOOST ACTIVATED! 🔥';
 
     this.typingContainerEl = el('div', {
       id: 'typing-box',
       style: {
-        width: '100%',
-        background: 'rgba(15, 23, 42, 0.94)',
-        border: '1px solid rgba(56, 189, 248, 0.35)',
-        borderRadius: '16px',
-        padding: '20px 28px',
+        width: 'auto',
+        maxWidth: '540px',
+        height: '46px',
+        maxHeight: '46px',
+        overflow: 'hidden',
+        background: 'rgba(15, 23, 42, 0.78)',
+        border: '1px solid rgba(56, 189, 248, 0.4)',
+        borderRadius: '23px',
+        padding: '0 24px',
         backdropFilter: 'blur(16px)',
-        boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 24px rgba(56, 189, 248, 0.15)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 16px rgba(56, 189, 248, 0.15)',
         fontFamily: FONT_MONO,
         fontSize: '22px',
-        lineHeight: '1.6',
+        lineHeight: '46px',
         letterSpacing: '0.8px',
-        textAlign: 'left',
-        wordBreak: 'break-word',
+        whiteSpace: 'nowrap',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
         transition: 'border-color 0.12s ease, box-shadow 0.12s ease',
       },
     });
@@ -429,9 +463,9 @@ export class UIController {
     this.typingContainerEl.appendChild(this.remainingSpan);
 
     const hintEl = el('div', {
-      textContent: 'TYPE THE PASSAGE TO ACCELERATE • FINISH ALL WORDS TO WIN THE RACE',
+      textContent: 'TYPE SHORT EASY WORDS • STREAKS UNLOCK MULTI-LEVEL NITRO BOOST',
       style: {
-        fontSize: '11px',
+        fontSize: '10px',
         color: '#94a3b8',
         letterSpacing: '1.5px',
         fontWeight: '700',
@@ -439,9 +473,10 @@ export class UIController {
       },
     });
 
-    bottomCenter.appendChild(this.typingContainerEl);
-    bottomCenter.appendChild(hintEl);
-    this.hudRoot.appendChild(bottomCenter);
+    typingRibbonWrapper.appendChild(this.boostBannerEl);
+    typingRibbonWrapper.appendChild(this.typingContainerEl);
+    typingRibbonWrapper.appendChild(hintEl);
+    this.hudRoot.appendChild(typingRibbonWrapper);
 
     // ───────────────────────────────────────────────────────────────────────
     // BOTTOM RIGHT: Digital Speedometer
@@ -868,14 +903,35 @@ export class UIController {
   }
 
   // -------------------------------------------------------------------------
-  // Update Live Sentence Text (Three Visual States)
+  // Update Live Sentence Text (Focused Sliding Window: Only 3-4 Words At A Time)
+  // Keeps the typing ribbon ultra-clean, minimal, and uncluttered on a single line!
   // -------------------------------------------------------------------------
   updateSentenceText(sentence, charIndex) {
     if (!this.typedSpan || !this.cursorSpan || !this.remainingSpan) return;
 
-    const typedPart = sentence.slice(0, charIndex);
+    // Find the start index of the currently active word
+    let wordStart = 0;
+    if (charIndex > 0) {
+      const prevSpace = sentence.lastIndexOf(' ', charIndex - 1);
+      wordStart = prevSpace === -1 ? 0 : prevSpace + 1;
+    }
+
+    // Look ahead 3 to 4 words from the active character
+    let spacesFound = 0;
+    let windowEnd = sentence.length;
+    for (let i = charIndex; i < sentence.length; i++) {
+      if (sentence[i] === ' ') {
+        spacesFound++;
+        if (spacesFound >= 4) {
+          windowEnd = i;
+          break;
+        }
+      }
+    }
+
+    const typedPart = sentence.slice(wordStart, charIndex);
     const cursorChar = charIndex < sentence.length ? sentence[charIndex] : '';
-    const remainingPart = charIndex < sentence.length ? sentence.slice(charIndex + 1) : '';
+    const remainingPart = charIndex < sentence.length ? sentence.slice(charIndex + 1, windowEnd) : '';
 
     this.typedSpan.textContent = typedPart;
 
@@ -892,6 +948,35 @@ export class UIController {
       const pct = Math.min(100, (charIndex / sentence.length) * 100);
       this.progressBarFillEl.style.width = `${pct}%`;
     }
+  }
+
+  showBoostBanner(level = 1, durationSec = 3.0) {
+    if (!this.boostBannerEl) return;
+    this.boostBannerEl.style.display = 'flex';
+
+    if (level === 1) {
+      this.boostBannerEl.innerHTML = '⚡ LEVEL 1: TURBO CHARGE!';
+      this.boostBannerEl.style.background = 'linear-gradient(90deg, rgba(14, 165, 233, 0.92), rgba(56, 189, 248, 0.92))';
+      this.boostBannerEl.style.boxShadow = '0 0 16px rgba(56, 189, 248, 0.8), 0 0 30px rgba(14, 165, 233, 0.6)';
+      this.boostBannerEl.style.borderColor = '#38bdf8';
+    } else if (level === 2) {
+      this.boostBannerEl.innerHTML = '🔥 LEVEL 2: TWIN NITRO SURGE! 🔥';
+      this.boostBannerEl.style.background = 'linear-gradient(90deg, rgba(239, 68, 68, 0.92), rgba(245, 158, 11, 0.92))';
+      this.boostBannerEl.style.boxShadow = '0 0 18px rgba(239, 68, 68, 0.85), 0 0 35px rgba(245, 158, 11, 0.7)';
+      this.boostBannerEl.style.borderColor = '#ffea00';
+    } else {
+      this.boostBannerEl.innerHTML = '💥 LEVEL 3: HYPER OVERDRIVE! 💥';
+      this.boostBannerEl.style.background = 'linear-gradient(90deg, rgba(168, 85, 247, 0.95), rgba(236, 72, 153, 0.95), rgba(245, 158, 11, 0.95))';
+      this.boostBannerEl.style.boxShadow = '0 0 24px rgba(168, 85, 247, 0.9), 0 0 45px rgba(236, 72, 153, 0.8)';
+      this.boostBannerEl.style.borderColor = '#f43f5e';
+    }
+
+    clearTimeout(this._boostTimeout);
+    this._boostTimeout = setTimeout(() => {
+      if (this.boostBannerEl) {
+        this.boostBannerEl.style.display = 'none';
+      }
+    }, durationSec * 1000);
   }
 
   flashTypo() {

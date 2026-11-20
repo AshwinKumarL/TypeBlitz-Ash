@@ -1,21 +1,55 @@
 /**
  * typingEngine.js
  * Core typing engine for Type To Drive.
- * Configured with ~55-60 word (~320-350 char) 1-minute typing test passages.
- * Tracks wordsTyped, totalWords, completionRatio, and finishes when all words are typed.
+ * Generates dynamic random words for each race (~55 words, ~320 chars).
+ * Tracks clean typing streaks (1-3 words fast without errors) to trigger NITRO BOOST.
  */
 
-export const TYPING_PASSAGES = [
-  "The morning mist clings to the wide asphalt highway as your engine begins to roar with raw mechanical power. Every precise keystroke feeds clean fuel into the combustion chambers, propelling your machine forward into the open horizon. Focus your mind, find a smooth driving cadence, and accelerate past rival cars to claim victory at the finish line.",
-  "Sunlight breaks across the long desert straightaway while four powerful supercars line up side by side. Your hands rest firmly on the controls, ready to unleash maximum acceleration with swift and flawless typing. Keep your eyes on the road ahead, maintain rhythm through every phrase, and cross the checkered finish line in first place.",
-  "High speed racing demands absolute precision and unshakable concentration under intense competitive pressure. As the digital speedometer climbs past one hundred miles per hour, each typed word pushes your vehicle ahead of the chasing pack. Breathe steadily, lock into the flow state, and drive with unwavering determination until the race is won."
+export const RANDOM_WORD_POOL = [
+  'car', 'fast', 'run', 'go', 'race', 'red', 'hot', 'win', 'top', 'blue',
+  'fly', 'road', 'key', 'gear', 'shift', 'gas', 'rev', 'fuel', 'dash', 'push',
+  'turn', 'lap', 'spin', 'track', 'tire', 'drift', 'apex', 'flow', 'line', 'move',
+  'cool', 'beat', 'lead', 'pace', 'ride', 'neon', 'gold', 'burn', 'jump', 'play',
+  'easy', 'good', 'open', 'wide', 'fine', 'best', 'quick', 'fire', 'spark', 'blaze',
+  'zoom', 'rush', 'boost', 'turbo', 'speed', 'drive', 'swift', 'clean', 'power', 'motor',
+  'grip', 'pass', 'high', 'flash', 'star', 'tap', 'roll', 'time', 'air', 'fan',
+  'cool', 'bold', 'safe', 'rank', 'glow', 'beam', 'dash', 'wind', 'lane', 'flag'
 ];
 
+export const TYPING_PASSAGES = [
+  "The road ahead is open and clear accelerate with every key you press keep your eyes on the horizon fast fingers make fast engines run down the highway precision and rhythm build true velocity.",
+  "Sunlight breaks across the long straightaway while four powerful supercars line up side by side your hands rest firmly on the controls ready to unleash maximum acceleration with swift typing.",
+];
+
+export function generateRandomPassage(wordCount = 55) {
+  const chosen = [];
+  let lastWord = '';
+  for (let i = 0; i < wordCount; i++) {
+    let word;
+    do {
+      word = RANDOM_WORD_POOL[Math.floor(Math.random() * RANDOM_WORD_POOL.length)];
+    } while (word === lastWord && RANDOM_WORD_POOL.length > 1);
+    chosen.push(word);
+    lastWord = word;
+  }
+  return chosen.join(' ');
+}
+
 export class TypingEngine {
-  constructor(passages = TYPING_PASSAGES) {
-    this.passages = [...passages];
-    this.currentSentenceIndex = 0;
-    this.currentSentence = this.passages[0];
+  constructor(initialText = null) {
+    if (Array.isArray(initialText)) {
+      this.passages = initialText;
+      this.currentSentenceIndex = 0;
+      this.currentSentence = this.passages[0] || generateRandomPassage(55);
+    } else if (typeof initialText === 'string') {
+      this.passages = [initialText];
+      this.currentSentenceIndex = 0;
+      this.currentSentence = initialText;
+    } else {
+      this.passages = null;
+      this.currentSentenceIndex = 0;
+      this.currentSentence = generateRandomPassage(55);
+    }
     this.charIndex = 0;
     this.sentencesCompleted = 0;
     this.isActive = false;
@@ -25,12 +59,20 @@ export class TypingEngine {
     this.wordsTyped = 0;
     this.isFinished = false;
 
+    // Streak & Multi-Level Nitro Boost Tracking
+    this.cleanWordStreak = 0;
+    this.currentWordStartTime = null;
+    this.currentWordErrors = 0;
+    this.lastBoostTime = 0;
+    this.lastBoostLevel = 0;
+
     // Callbacks
     this.onCorrectKey = null;
     this.onIncorrectKey = null;
     this.onSentenceComplete = null;
     this.onFinish = null;
     this.onFirstKey = null;
+    this.onBoostTriggered = null;
 
     this._boundKeyHandler = this._handleKeyDown.bind(this);
     this._listening = false;
@@ -57,18 +99,17 @@ export class TypingEngine {
     this.isActive = active;
   }
 
-  reset(passageIndex = null) {
-    if (passageIndex !== null && passageIndex >= 0 && passageIndex < this.passages.length) {
-      this.currentSentenceIndex = passageIndex;
-    } else {
-      this.currentSentenceIndex = (this.currentSentenceIndex) % this.passages.length;
-    }
-    this.currentSentence = this.passages[this.currentSentenceIndex];
+  reset(customText = null) {
+    this.currentSentence = customText || generateRandomPassage(55);
     this.charIndex = 0;
     this.sentencesCompleted = 0;
     this.totalWords = this._countWords(this.currentSentence);
     this.wordsTyped = 0;
     this.isFinished = false;
+    this.cleanWordStreak = 0;
+    this.currentWordStartTime = null;
+    this.currentWordErrors = 0;
+    this.lastBoostTime = 0;
   }
 
   getCurrentSentence() {
@@ -97,21 +138,24 @@ export class TypingEngine {
       wordsTyped: this.wordsTyped,
       totalWords: this.totalWords,
       isFinished: this.isFinished,
-      sentencesCompleted: this.sentencesCompleted,
+      cleanWordStreak: this.cleanWordStreak,
     };
   }
 
   // -------------------------------------------------------------------------
-  // Process Single Keystroke (Used by keyboard listener and tests)
+  // Process Single Keystroke
   // -------------------------------------------------------------------------
   processKey(key, nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now())) {
     if (!this.isActive || this.isFinished) return null;
 
-    // Ignore modifier and navigation keys
     if (this._isIgnoredKey(key)) return null;
 
     const expected = this.getExpectedChar();
     if (expected === null) return null;
+
+    if (this.currentWordStartTime === null) {
+      this.currentWordStartTime = nowMs;
+    }
 
     const isCorrect = (key === expected);
 
@@ -119,38 +163,118 @@ export class TypingEngine {
       const wasSpace = (expected === ' ');
       this.charIndex++;
 
-      // Update words completed
-      if (wasSpace) {
+      // When finishing a word (hitting space) or finishing the last word
+      const isWordEnd = wasSpace || (this.charIndex >= this.currentSentence.length);
+
+      if (isWordEnd) {
         this._recalculateWordsTyped();
+
+        const wordDuration = Math.max(100, nowMs - (this.currentWordStartTime || nowMs));
+        const wordLength = wasSpace ? 5 : Math.max(1, this.currentSentence.length - (this.currentSentence.lastIndexOf(' ') + 1));
+        const wordWpm = (wordLength / 5) / (wordDuration / 60000);
+
+        if (this.currentWordErrors === 0) {
+          // Perfectly typed word without error!
+          this.cleanWordStreak++;
+
+          // Multi-Tier Nitro Boost:
+          // Level 1: 2 clean words -> Turbo Charge (+24 km/h)
+          // Level 2: 4 clean words -> Twin Nitro Surge (+38 km/h)
+          // Level 3: 6+ clean words -> Hyper Overdrive (+55 km/h)
+          let level = 0;
+          let speedBonus = 0;
+          let durationSec = 0;
+
+          if (this.cleanWordStreak >= 6) {
+            level = 3;
+            speedBonus = 55;
+            durationSec = 4.2;
+          } else if (this.cleanWordStreak >= 4) {
+            level = 2;
+            speedBonus = 38;
+            durationSec = 3.5;
+          } else if (this.cleanWordStreak >= 2) {
+            level = 1;
+            speedBonus = 24;
+            durationSec = 2.8;
+          }
+
+          if (level > 0 && (nowMs - this.lastBoostTime > 1800 || level > this.lastBoostLevel)) {
+            this.lastBoostTime = nowMs;
+            this.lastBoostLevel = level;
+            if (typeof this.onBoostTriggered === 'function') {
+              this.onBoostTriggered({
+                level,
+                streak: this.cleanWordStreak,
+                wordWpm: Math.round(wordWpm),
+                speedBonus,
+                durationSec,
+              });
+            }
+          }
+        } else {
+          this.cleanWordStreak = 0;
+          this.lastBoostLevel = 0;
+        }
+
+        // Reset for next word
+        this.currentWordStartTime = nowMs;
+        this.currentWordErrors = 0;
       }
 
       if (typeof this.onCorrectKey === 'function') {
         this.onCorrectKey(key, this.charIndex, nowMs);
       }
 
-      // Check if entire passage is finished
+      // Check if sentence/passage is finished
       if (this.charIndex >= this.currentSentence.length) {
-        this.wordsTyped = this.totalWords;
-        this.isFinished = true;
         this.sentencesCompleted++;
         const completed = this.currentSentence;
 
-        if (typeof this.onSentenceComplete === 'function') {
-          this.onSentenceComplete(completed, this.currentSentence, this.sentencesCompleted, nowMs);
-        }
+        if (this.passages && this.currentSentenceIndex < this.passages.length - 1) {
+          this.currentSentenceIndex++;
+          this.currentSentence = this.passages[this.currentSentenceIndex];
+          this.charIndex = 0;
+          this.isFinished = false;
 
-        if (typeof this.onFinish === 'function') {
-          this.onFinish({
-            wordsTyped: this.wordsTyped,
-            totalWords: this.totalWords,
-            totalChars: this.currentSentence.length,
-            nowMs
-          });
+          if (typeof this.onSentenceComplete === 'function') {
+            this.onSentenceComplete(completed, this.currentSentence, this.sentencesCompleted, nowMs);
+          }
+        } else if (!this.passages && !this.isRaceMode) {
+          // Continuous multi-sentence mode
+          this.currentSentence = generateRandomPassage(55);
+          this.charIndex = 0;
+          this.isFinished = false;
+
+          if (typeof this.onSentenceComplete === 'function') {
+            this.onSentenceComplete(completed, this.currentSentence, this.sentencesCompleted, nowMs);
+          }
+        } else {
+          this.wordsTyped = this.totalWords;
+          this.isFinished = true;
+
+          if (typeof this.onSentenceComplete === 'function') {
+            this.onSentenceComplete(completed, this.currentSentence, this.sentencesCompleted, nowMs);
+          }
+
+          if (typeof this.onFinish === 'function') {
+            this.onFinish({
+              wordsTyped: this.wordsTyped,
+              totalWords: this.totalWords,
+              totalChars: this.currentSentence.length,
+              nowMs
+            });
+          }
         }
       }
 
       return { isCorrect: true, key, charIndex: this.charIndex, isFinished: this.isFinished };
     } else {
+      // Keystroke Error
+      this.currentWordErrors++;
+      this.cleanWordStreak = 0; // Break clean streak on error
+      this.lastBoostLevel = 0;
+
       if (typeof this.onIncorrectKey === 'function') {
         this.onIncorrectKey(expected, key, this.charIndex, nowMs);
       }
@@ -164,13 +288,10 @@ export class TypingEngine {
       return;
     }
     const typedText = this.currentSentence.slice(0, this.charIndex);
-    // Count completed words (delimited by spaces)
     const matches = typedText.match(/\S+/g);
-    // If the char at charIndex - 1 is a space, the last word was fully completed
     if (typedText.endsWith(' ')) {
       this.wordsTyped = matches ? matches.length : 0;
     } else {
-      // Still typing a word
       this.wordsTyped = matches && matches.length > 1 ? matches.length - 1 : 0;
     }
   }
@@ -190,7 +311,6 @@ export class TypingEngine {
   _handleKeyDown(event) {
     if (!this.isActive || this.isFinished) return;
 
-    // Prevent spacebar or other typing keys from scrolling the webpage
     if (event.key === ' ' || event.key === 'Tab') {
       event.preventDefault();
     }

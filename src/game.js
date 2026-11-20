@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { StraightWorld, FINISH_LINE_Z } from './straightRoad.js';
 import { createFordAngliaCar, VehicleController, PLAYER_LANE_X } from './car.js';
+import { createPlayerSupercarMesh } from './carModels.js';
 import { StraightChaseCamera } from './camera.js';
 import { SpeedEffects } from './speedEffects.js';
 import { TypingEngine } from './typingEngine.js';
@@ -8,6 +9,7 @@ import { WPMCalculator } from './wpmCalculator.js';
 import { AudioManager } from './audio.js';
 import { UIController } from './ui.js';
 import { BotManager } from './bots.js';
+import { getRandomFleet, getCarMesh, preloadAllCarModels } from './carCatalog.js';
 
 export class Game {
   constructor() {
@@ -24,13 +26,8 @@ export class Game {
     // 2. Straight Highway World (4 Lanes, Finish Line Arch at FINISH_LINE_Z, Continuous Terrain)
     this.world = new StraightWorld(this.scene);
 
-    // 3. Player Car (Ford Anglia Model, Centered at x = 0.0)
-    const { container: carContainer } = createFordAngliaCar((container, wheels) => {
-      if (this.car) {
-        this.car.container.userData.wheels = wheels;
-      }
-    });
-    this.carMesh = carContainer;
+    // 3. Player Car (Overhauled Aerodynamic Low-Poly GT Supercar with Dual Exhausts)
+    this.carMesh = createPlayerSupercarMesh(0xe11d48, 0x0f172a);
     this.scene.add(this.carMesh);
 
     this.car = new VehicleController(this.carMesh);
@@ -64,6 +61,13 @@ export class Game {
     this._setupUIHooks();
     this._bindWindowEvents();
 
+    // Initialize 3D Low-Poly Car Fleet (Selected at random for each car everytime!)
+    preloadAllCarModels().then(() => {
+      this.setupRandomRaceFleet();
+    }).catch(err => {
+      console.warn('Car models preloading fallback:', err);
+    });
+
     // Show starting screen
     this.ui.showMenu();
     this.ui.updateSentenceText(this.typingEngine.getCurrentSentence(), 0);
@@ -73,13 +77,37 @@ export class Game {
   }
 
   // -------------------------------------------------------------------------
+  // Randomize Race Fleet (Player & Rival Bots selected at random every time!)
+  // -------------------------------------------------------------------------
+  setupRandomRaceFleet() {
+    const fleet = getRandomFleet(4);
+    if (!fleet || fleet.length < 4) return;
+
+    // 0: Player Car
+    const playerItem = fleet[0];
+    const playerMesh = getCarMesh(playerItem.def, playerItem.paintHex);
+    if (playerMesh && this.car) {
+      this.car.setCarMesh(playerMesh);
+      this.playerCarDef = playerItem.def;
+      if (this.speedEffects && playerItem.def.tailpipeOffsets) {
+        this.speedEffects.setTailpipeOffsets(playerItem.def.tailpipeOffsets);
+      }
+    }
+
+    // 1, 2, 3: Competitor Bots
+    if (this.botManager) {
+      this.botManager.randomizeFleet([fleet[1], fleet[2], fleet[3]]);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Three.js Scene Setup
   // -------------------------------------------------------------------------
   _initScene() {
     this.scene = new THREE.Scene();
 
     const aspect = window.innerWidth / window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(58, aspect, 0.1, 1400);
+    this.camera = new THREE.PerspectiveCamera(58, aspect, 0.5, 1400);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -124,6 +152,23 @@ export class Game {
     this.typingEngine.onFinish = () => {
       if (this.state === 'PLAYING') {
         this._finishChallenge();
+      }
+    };
+
+    // Multi-Tier Nitro Boost Triggered by clean streaks!
+    this.typingEngine.onBoostTriggered = (info) => {
+      if (this.state === 'PLAYING') {
+        const duration = info.durationSec || 3.2;
+        const level = info.level || 1;
+        const speedBonus = info.speedBonus || 30;
+
+        this.speedEffects.triggerBoost(level, duration);
+        this.car.applyBoost(duration, speedBonus);
+        this.ui.showBoostBanner(level, duration);
+
+        if (this.audio.playBoostSound) {
+          this.audio.playBoostSound();
+        }
       }
     };
 
@@ -180,6 +225,10 @@ export class Game {
     this.elapsedTimeSec = 0;
     this.sessionStartTime = performance.now();
 
+    // Select random cars for player and bots for this race
+    this.setupRandomRaceFleet();
+
+    this.typingEngine.isRaceMode = true;
     this.typingEngine.setActive(true);
     this.wpmCalc.start(this.sessionStartTime);
     this.botManager.reset();
@@ -219,6 +268,9 @@ export class Game {
     this.elapsedTimeSec = 0;
     this.sessionStartTime = performance.now();
 
+    // Select a fresh randomized car fleet for the new race
+    this.setupRandomRaceFleet();
+
     this.car.reset();
     this.botManager.reset();
     this.world.reset();
@@ -226,6 +278,7 @@ export class Game {
     this.speedEffects.reset();
 
     this.typingEngine.reset();
+    this.typingEngine.isRaceMode = true;
     this.typingEngine.setActive(true);
     this.wpmCalc.reset();
     this.wpmCalc.start(this.sessionStartTime);
@@ -301,8 +354,8 @@ export class Game {
       const playerZ = this.car.position.z;
       const speedKmh = this.car.getSpeedKmh();
 
-      // 4. Update Competitor Bots
-      this.botManager.update(dt, this.elapsedTimeSec, true);
+      // 4. Update Competitor Bots (Dynamic Adaptive Pacing & Bot Turbo Boosts)
+      this.botManager.update(dt, this.elapsedTimeSec, true, playerZ, this.car.speed, liveWpm, this.speedEffects);
 
       // 5. Calculate Live Race Placement (1st, 2nd, 3rd, 4th)
       const rank = this.botManager.getLiveRank(playerZ);
@@ -313,8 +366,8 @@ export class Game {
       // 7. Update Chase Camera with Dynamic FOV
       this.chaseCamera.update(dt, speedKmh);
 
-      // 8. Update High-Speed Wind Streaks
-      this.speedEffects.update(dt, playerZ, speedKmh);
+      // 8. Update High-Speed Wind Streaks, Smoke & Nitro Flames/Sparks
+      this.speedEffects.update(dt, playerZ, speedKmh, this.car.position.x);
 
       // 9. Update Engine Sound Pitch
       this.audio.updateEngine(speedKmh, false);
@@ -346,11 +399,11 @@ export class Game {
       this.car.step(dt);
 
       // Bots continue coasting / finishing
-      this.botManager.update(dt, this.elapsedTimeSec, false);
+      this.botManager.update(dt, this.elapsedTimeSec, false, this.car.position.z, this.car.speed, 0);
 
       this.world.update(this.car.position.z);
       this.chaseCamera.update(dt, this.car.getSpeedKmh());
-      this.speedEffects.update(dt, this.car.position.z, this.car.getSpeedKmh());
+      this.speedEffects.update(dt, this.car.position.z, this.car.getSpeedKmh(), this.car.position.x);
       this.audio.updateEngine(this.car.getSpeedKmh(), false);
     }
 

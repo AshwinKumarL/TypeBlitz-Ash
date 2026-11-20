@@ -1,0 +1,18 @@
+{
+  "name": "low-poly-racer",
+  "version": "1.0.0",
+  "description": "A polished low-poly 3D single-player indie arcade racing game built with Three.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node -e \"import('fs').then(fs => fs.copyFileSync('dist/index.html', 'low_poly_racer.html'))\"",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "vite-plugin-singlefile": "^2.3.4"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  }
+}

@@ -3,6 +3,9 @@
 const CYAN = '#38bdf8';
 const EMERALD = '#10b981';
 const RED = '#ef4444';
+const GOLD = '#facc15';
+const SILVER = '#cbd5e1';
+const BRONZE = '#d97706';
 const BG_PANEL = 'rgba(15, 23, 42, 0.88)';
 const FONT_ORBITRON = 'Orbitron, -apple-system, sans-serif';
 const FONT_MONO = "'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace";
@@ -28,18 +31,27 @@ function el(tag, attrs = {}, ...children) {
   return elem;
 }
 
+function formatTime(seconds) {
+  if (isNaN(seconds) || seconds < 0) seconds = 0;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const tenths = Math.floor((seconds % 1) * 10);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${tenths}`;
+}
+
 export class UIController {
   constructor() {
     this.container = null;
 
     // HUD Elements
     this.hudRoot = null;
-    this.distanceValueEl = null;
-    this.timerValueEl = null;
+    this.elapsedTimeValueEl = null;
+    this.wordsCounterValueEl = null;
+    this.positionBadgeEl = null;
+    this.finishDistanceValueEl = null;
 
     this.wpmValueEl = null;
     this.accuracyValueEl = null;
-    this.sentenceProgressEl = null;
     this.progressBarFillEl = null;
 
     this.typingContainerEl = null;
@@ -54,6 +66,8 @@ export class UIController {
     this.menuOverlay = null;
     this.pauseOverlay = null;
     this.finishOverlay = null;
+    this.finishPlacementHeader = null;
+    this.finishStatsContainer = null;
 
     // Sound toggle button
     this.soundBtn = null;
@@ -109,69 +123,97 @@ export class UIController {
     });
 
     // ───────────────────────────────────────────────────────────────────────
-    // TOP LEFT: Distance & Challenge Countdown Timer
+    // TOP LEFT: Race Status Cards (Elapsed Time, Words, Position, Distance)
     // ───────────────────────────────────────────────────────────────────────
     const topLeft = el('div', {
       style: {
         position: 'absolute',
-        top: '24px',
+        top: '20px',
         left: '24px',
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px',
+        gap: '8px',
       },
     });
 
-    // Distance Pill
-    const distCard = el('div', {
+    const cardStyle = {
+      background: BG_PANEL,
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: '12px',
+      padding: '8px 16px',
+      backdropFilter: 'blur(10px)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+      minWidth: '150px',
+    };
+
+    // 1. Elapsed Time Card
+    const elapsedCard = el('div', { style: cardStyle });
+    const elapsedLabel = el('div', {
+      textContent: 'ELAPSED TIME',
+      style: { fontSize: '10px', color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '2px' },
+    });
+    this.elapsedTimeValueEl = el('div', {
+      textContent: '00:00.0',
+      style: { fontSize: '20px', fontWeight: '800', color: CYAN, letterSpacing: '1px' },
+    });
+    elapsedCard.appendChild(elapsedLabel);
+    elapsedCard.appendChild(this.elapsedTimeValueEl);
+
+    // 2. Words Counter Card
+    const wordsCard = el('div', { style: cardStyle });
+    const wordsLabel = el('div', {
+      textContent: 'WORDS TYPED',
+      style: { fontSize: '10px', color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '2px' },
+    });
+    this.wordsCounterValueEl = el('div', {
+      textContent: '0 / 60',
+      style: { fontSize: '20px', fontWeight: '800', color: '#f8fafc', letterSpacing: '1px' },
+    });
+    wordsCard.appendChild(wordsLabel);
+    wordsCard.appendChild(this.wordsCounterValueEl);
+
+    // 3. Position Badge Card
+    const posCard = el('div', { style: { ...cardStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between' } });
+    const posLeft = el('div');
+    const posLabel = el('div', {
+      textContent: 'POSITION',
+      style: { fontSize: '10px', color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '2px' },
+    });
+    posLeft.appendChild(posLabel);
+    this.positionBadgeEl = el('div', {
+      textContent: '1st',
       style: {
-        background: BG_PANEL,
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        borderRadius: '12px',
-        padding: '10px 18px',
-        backdropFilter: 'blur(10px)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+        fontSize: '22px',
+        fontWeight: '900',
+        color: GOLD,
+        textShadow: `0 0 12px ${GOLD}88`,
+        letterSpacing: '1px',
       },
     });
-    const distLabel = el('div', {
-      textContent: 'DISTANCE',
-      style: { fontSize: '11px', color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '2px' },
-    });
-    this.distanceValueEl = el('div', {
-      textContent: '0 M',
-      style: { fontSize: '22px', fontWeight: '800', color: '#f8fafc', letterSpacing: '1px' },
-    });
-    distCard.appendChild(distLabel);
-    distCard.appendChild(this.distanceValueEl);
+    posCard.appendChild(posLeft);
+    posCard.appendChild(this.positionBadgeEl);
 
-    // Timer Pill (60-second challenge)
-    const timerCard = el('div', {
-      style: {
-        background: BG_PANEL,
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        borderRadius: '12px',
-        padding: '10px 18px',
-        backdropFilter: 'blur(10px)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-      },
+    // 4. Finish Distance Card
+    const finishDistCard = el('div', { style: cardStyle });
+    const finishDistLabel = el('div', {
+      textContent: 'FINISH DISTANCE',
+      style: { fontSize: '10px', color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '2px' },
     });
-    const timerLabel = el('div', {
-      textContent: 'TIME REMAINING',
-      style: { fontSize: '11px', color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '2px' },
+    this.finishDistanceValueEl = el('div', {
+      textContent: '1250 M',
+      style: { fontSize: '18px', fontWeight: '800', color: EMERALD, letterSpacing: '1px' },
     });
-    this.timerValueEl = el('div', {
-      textContent: '60.0s',
-      style: { fontSize: '22px', fontWeight: '800', color: CYAN, letterSpacing: '1px' },
-    });
-    timerCard.appendChild(timerLabel);
-    timerCard.appendChild(this.timerValueEl);
+    finishDistCard.appendChild(finishDistLabel);
+    finishDistCard.appendChild(this.finishDistanceValueEl);
 
-    topLeft.appendChild(distCard);
-    topLeft.appendChild(timerCard);
+    topLeft.appendChild(elapsedCard);
+    topLeft.appendChild(wordsCard);
+    topLeft.appendChild(posCard);
+    topLeft.appendChild(finishDistCard);
     this.hudRoot.appendChild(topLeft);
 
     // ───────────────────────────────────────────────────────────────────────
-    // TOP CENTER: Massive Live WPM, Accuracy, and Sentence Progress
+    // TOP CENTER: Massive Live WPM, Accuracy, and Progress
     // ───────────────────────────────────────────────────────────────────────
     const topCenter = el('div', {
       style: {
@@ -217,7 +259,7 @@ export class UIController {
     wpmRow.appendChild(this.wpmValueEl);
     wpmRow.appendChild(wpmLabel);
 
-    // Stats line: Accuracy & Sentence Progress
+    // Stats line: Accuracy
     const statsRow = el('div', {
       style: {
         display: 'flex',
@@ -229,17 +271,15 @@ export class UIController {
       },
     });
     this.accuracyValueEl = el('span', { textContent: 'ACCURACY: 100%' });
-    this.sentenceProgressEl = el('span', { textContent: 'SENTENCE 1' });
     statsRow.appendChild(this.accuracyValueEl);
-    statsRow.appendChild(this.sentenceProgressEl);
 
     // Sentence Progress Bar
     const progressBarBg = el('div', {
       style: {
-        width: '260px',
-        height: '4px',
+        width: '280px',
+        height: '6px',
         background: 'rgba(255, 255, 255, 0.15)',
-        borderRadius: '2px',
+        borderRadius: '3px',
         overflow: 'hidden',
         marginTop: '4px',
       },
@@ -250,7 +290,7 @@ export class UIController {
         height: '100%',
         background: 'linear-gradient(90deg, #38bdf8, #10b981)',
         transition: 'width 0.1s ease-out',
-        borderRadius: '2px',
+        borderRadius: '3px',
       },
     });
     progressBarBg.appendChild(this.progressBarFillEl);
@@ -340,24 +380,23 @@ export class UIController {
       id: 'typing-box',
       style: {
         width: '100%',
-        background: 'rgba(15, 23, 42, 0.92)',
+        background: 'rgba(15, 23, 42, 0.94)',
         border: '1px solid rgba(56, 189, 248, 0.35)',
         borderRadius: '16px',
         padding: '20px 28px',
         backdropFilter: 'blur(16px)',
         boxShadow: '0 16px 40px rgba(0,0,0,0.5), 0 0 24px rgba(56, 189, 248, 0.15)',
         fontFamily: FONT_MONO,
-        fontSize: '24px',
+        fontSize: '22px',
         lineHeight: '1.6',
-        letterSpacing: '1px',
-        textAlign: 'center',
+        letterSpacing: '0.8px',
+        textAlign: 'left',
         wordBreak: 'break-word',
         transition: 'border-color 0.12s ease, box-shadow 0.12s ease',
       },
     });
 
     // 3 Visual states spans:
-    // 1. Correctly typed characters
     this.typedSpan = el('span', {
       style: {
         color: EMERALD,
@@ -366,7 +405,6 @@ export class UIController {
       },
     });
 
-    // 2. Active Cursor Character
     this.cursorSpan = el('span', {
       style: {
         color: '#ffffff',
@@ -379,7 +417,6 @@ export class UIController {
       },
     });
 
-    // 3. Remaining characters yet to type
     this.remainingSpan = el('span', {
       style: {
         color: '#94a3b8',
@@ -392,7 +429,7 @@ export class UIController {
     this.typingContainerEl.appendChild(this.remainingSpan);
 
     const hintEl = el('div', {
-      textContent: 'TYPE THE TEXT ABOVE TO DRIVE • FASTER TYPING = HIGHER ACCELERATION',
+      textContent: 'TYPE THE PASSAGE TO ACCELERATE • FINISH ALL WORDS TO WIN THE RACE',
       style: {
         fontSize: '11px',
         color: '#94a3b8',
@@ -441,7 +478,6 @@ export class UIController {
     speedRow.appendChild(this.speedValueEl);
     speedRow.appendChild(kmhLabel);
 
-    // Speed bar
     const speedBarBg = el('div', {
       style: {
         width: '100%',
@@ -505,9 +541,9 @@ export class UIController {
     });
 
     const subTitleEl = el('p', {
-      textContent: 'Your fingers control your speed.',
+      textContent: 'Highway Drag Race • 1-Minute Typing Championship',
       style: {
-        fontSize: '20px',
+        fontSize: '18px',
         color: '#94a3b8',
         letterSpacing: '3px',
         margin: '0',
@@ -521,7 +557,7 @@ export class UIController {
         border: '1px solid rgba(56, 189, 248, 0.25)',
         borderRadius: '16px',
         padding: '24px 36px',
-        maxWidth: '560px',
+        maxWidth: '580px',
         textAlign: 'center',
         display: 'flex',
         flexDirection: 'column',
@@ -531,15 +567,15 @@ export class UIController {
     });
 
     const inst1 = el('div', {
-      textContent: '⌨️ Type the displayed text correctly on your keyboard to accelerate.',
+      textContent: '⌨️ Type the 1-minute passage accurately to accelerate your car.',
       style: { fontSize: '15px', color: '#e2e8f0', lineHeight: '1.5' },
     });
     const inst2 = el('div', {
-      textContent: '⚡ Higher WPM generates greater acceleration. Stopping slows the car to a halt.',
+      textContent: '⚡ Higher WPM generates blazing top speeds to overtake AI rival supercars.',
       style: { fontSize: '15px', color: '#38bdf8', lineHeight: '1.5' },
     });
     const inst3 = el('div', {
-      textContent: '⏱️ Complete as many sentences as you can in the 60-second speed challenge.',
+      textContent: '🏁 Race ends when all words are typed and you cross the finish line arch.',
       style: { fontSize: '14px', color: '#94a3b8', lineHeight: '1.5' },
     });
 
@@ -548,7 +584,7 @@ export class UIController {
     card.appendChild(inst3);
 
     const startBtn = el('button', {
-      textContent: 'START TYPING',
+      textContent: 'START RACE',
       style: {
         fontFamily: FONT_ORBITRON,
         fontSize: '20px',
@@ -638,7 +674,7 @@ export class UIController {
     });
 
     const restartBtn = el('button', {
-      textContent: 'RESTART CHALLENGE',
+      textContent: 'RESTART RACE',
       style: {
         fontFamily: FONT_ORBITRON,
         fontSize: '16px',
@@ -662,7 +698,7 @@ export class UIController {
   }
 
   // -------------------------------------------------------------------------
-  // 4. Finish / Results Overlay (After 60-Second Challenge)
+  // 4. Finish / Results Overlay
   // -------------------------------------------------------------------------
   _createFinishOverlay() {
     this.finishOverlay = el('div', {
@@ -670,8 +706,8 @@ export class UIController {
       style: {
         position: 'absolute',
         inset: '0',
-        background: 'radial-gradient(ellipse at center, rgba(15, 23, 42, 0.88) 0%, rgba(2, 6, 23, 0.98) 100%)',
-        backdropFilter: 'blur(14px)',
+        background: 'radial-gradient(ellipse at center, rgba(15, 23, 42, 0.90) 0%, rgba(2, 6, 23, 0.98) 100%)',
+        backdropFilter: 'blur(16px)',
         display: 'none',
         flexDirection: 'column',
         alignItems: 'center',
@@ -681,14 +717,16 @@ export class UIController {
       },
     });
 
-    const badgeEl = el('div', {
-      textContent: '🏁 CHALLENGE COMPLETE 🏁',
+    this.finishPlacementHeader = el('div', {
+      id: 'finish-placement-header',
+      textContent: '🏆 1st PLACE - RACE WINNER!',
       style: {
-        fontSize: '36px',
+        fontSize: 'clamp(28px, 4vw, 44px)',
         fontWeight: '900',
         letterSpacing: '4px',
-        color: EMERALD,
-        textShadow: '0 0 24px rgba(16, 185, 129, 0.6)',
+        color: GOLD,
+        textShadow: `0 0 30px ${GOLD}88`,
+        textAlign: 'center',
       },
     });
 
@@ -697,16 +735,16 @@ export class UIController {
         background: 'rgba(30, 41, 59, 0.85)',
         border: '1px solid rgba(56, 189, 248, 0.3)',
         borderRadius: '20px',
-        padding: '30px 48px',
+        padding: '28px 48px',
         display: 'grid',
-        gridTemplateColumns: 'repeat(2, 220px)',
-        gap: '24px',
+        gridTemplateColumns: 'repeat(2, 230px)',
+        gap: '22px',
         boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
       },
     });
 
     const restartBtn = el('button', {
-      textContent: 'DRIVE AGAIN [ENTER]',
+      textContent: 'PLAY AGAIN [ENTER]',
       style: {
         fontFamily: FONT_ORBITRON,
         fontSize: '20px',
@@ -726,7 +764,7 @@ export class UIController {
     restartBtn.onmouseenter = () => restartBtn.style.transform = 'scale(1.05)';
     restartBtn.onmouseleave = () => restartBtn.style.transform = 'scale(1)';
 
-    this.finishOverlay.appendChild(badgeEl);
+    this.finishOverlay.appendChild(this.finishPlacementHeader);
     this.finishOverlay.appendChild(this.finishStatsContainer);
     this.finishOverlay.appendChild(restartBtn);
 
@@ -760,18 +798,44 @@ export class UIController {
     if (this.pauseOverlay) this.pauseOverlay.style.display = 'none';
   }
 
-  showFinish(stats) {
+  showFinish(stats = {}) {
     if (!this.finishOverlay) return;
+
+    // Header based on placement/position
+    const pos = stats.position !== undefined ? stats.position : (stats.placement || 1);
+    if (pos === 1 || String(pos).includes('1')) {
+      this.finishPlacementHeader.textContent = '🏆 1st PLACE - RACE WINNER!';
+      this.finishPlacementHeader.style.color = GOLD;
+      this.finishPlacementHeader.style.textShadow = `0 0 30px ${GOLD}88`;
+    } else if (pos === 2 || String(pos).includes('2')) {
+      this.finishPlacementHeader.textContent = '🥈 2nd PLACE';
+      this.finishPlacementHeader.style.color = SILVER;
+      this.finishPlacementHeader.style.textShadow = `0 0 30px ${SILVER}88`;
+    } else if (pos === 3 || String(pos).includes('3')) {
+      this.finishPlacementHeader.textContent = '🥉 3rd PLACE';
+      this.finishPlacementHeader.style.color = BRONZE;
+      this.finishPlacementHeader.style.textShadow = `0 0 30px ${BRONZE}88`;
+    } else {
+      this.finishPlacementHeader.textContent = `${pos}th PLACE`;
+      this.finishPlacementHeader.style.color = '#94a3b8';
+      this.finishPlacementHeader.style.textShadow = '0 0 20px rgba(148, 163, 184, 0.5)';
+    }
 
     this.finishStatsContainer.innerHTML = '';
 
+    const finishTimeStr = stats.finishTimeFormatted || formatTime(stats.finishTimeSec || stats.elapsedTimeSec || 0);
+    const avgWpmVal = stats.avgWpm !== undefined ? stats.avgWpm.toFixed(1) : '0.0';
+    const peakWpmVal = stats.peakWpm !== undefined ? stats.peakWpm.toFixed(1) : '0.0';
+    const accuracyVal = stats.accuracy !== undefined ? `${stats.accuracy.toFixed(1)}%` : '100%';
+    const totalWordsVal = stats.wordsTyped !== undefined ? `${stats.wordsTyped} / ${stats.totalWords || stats.wordsTyped}` : (stats.totalWords || '60');
+
     const statItems = [
-      { label: 'AVERAGE WPM', value: `${stats.avgWpm.toFixed(1)}`, color: CYAN },
-      { label: 'MAX (PEAK) WPM', value: `${stats.peakWpm.toFixed(1)}`, color: EMERALD },
-      { label: 'TYPING ACCURACY', value: `${stats.accuracy.toFixed(1)}%`, color: '#f8fafc' },
-      { label: 'TOTAL DISTANCE', value: stats.distance >= 1000 ? `${(stats.distance / 1000).toFixed(2)} KM` : `${Math.round(stats.distance)} M`, color: '#f8fafc' },
-      { label: 'CHARACTERS TYPED', value: `${stats.totalChars}`, color: '#cbd5e1' },
-      { label: 'SENTENCES COMPLETED', value: `${stats.sentencesCompleted}`, color: '#cbd5e1' },
+      { label: 'FINISH TIME', value: finishTimeStr, color: CYAN },
+      { label: 'AVERAGE WPM', value: avgWpmVal, color: '#f8fafc' },
+      { label: 'PEAK WPM', value: peakWpmVal, color: EMERALD },
+      { label: 'ACCURACY', value: accuracyVal, color: '#f8fafc' },
+      { label: 'TOTAL WORDS TYPED', value: `${totalWordsVal}`, color: '#cbd5e1' },
+      { label: 'RACE DISTANCE', value: stats.distance >= 1000 ? `${(stats.distance / 1000).toFixed(2)} KM` : `${Math.round(stats.distance || 1250)} M`, color: '#cbd5e1' },
     ];
 
     statItems.forEach(item => {
@@ -789,7 +853,7 @@ export class UIController {
       });
       const val = el('div', {
         textContent: item.value,
-        style: { fontSize: '32px', fontWeight: '900', color: item.color, letterSpacing: '-0.5px' },
+        style: { fontSize: '28px', fontWeight: '900', color: item.color, letterSpacing: '-0.5px' },
       });
       box.appendChild(lbl);
       box.appendChild(val);
@@ -815,7 +879,6 @@ export class UIController {
 
     this.typedSpan.textContent = typedPart;
 
-    // Display cursor char (substitute visible symbol for space if at space)
     if (cursorChar === ' ') {
       this.cursorSpan.innerHTML = '&nbsp;';
     } else {
@@ -826,12 +889,11 @@ export class UIController {
 
     // Update progress bar
     if (this.progressBarFillEl && sentence.length > 0) {
-      const pct = (charIndex / sentence.length) * 100;
+      const pct = Math.min(100, (charIndex / sentence.length) * 100);
       this.progressBarFillEl.style.width = `${pct}%`;
     }
   }
 
-  // Flash red on error keystroke
   flashTypo() {
     if (!this.typingContainerEl) return;
     this.typingContainerEl.style.borderColor = RED;
@@ -847,15 +909,23 @@ export class UIController {
   // -------------------------------------------------------------------------
   // Update Live HUD Metrics
   // -------------------------------------------------------------------------
-  updateHUD({ liveWpm, accuracy, speedKmh, distanceM, timeRemainingSec, sentenceIndex }) {
+  updateHUD({
+    liveWpm = 0,
+    accuracy = 100,
+    speedKmh = 0,
+    elapsedTimeSec = 0,
+    wordsTyped = 0,
+    totalWords = 60,
+    position = 1,
+    finishDistanceM = 0,
+    distanceM = 0,
+    timeRemainingSec = undefined,
+  } = {}) {
     if (this.wpmValueEl) {
       this.wpmValueEl.textContent = Math.round(liveWpm);
     }
     if (this.accuracyValueEl) {
       this.accuracyValueEl.textContent = `ACCURACY: ${accuracy.toFixed(0)}%`;
-    }
-    if (this.sentenceProgressEl && sentenceIndex !== undefined) {
-      this.sentenceProgressEl.textContent = `SENTENCE ${sentenceIndex + 1}`;
     }
     if (this.speedValueEl) {
       this.speedValueEl.textContent = Math.round(speedKmh);
@@ -864,20 +934,43 @@ export class UIController {
       const pct = Math.min(100, (speedKmh / 160.0) * 100);
       this.speedBarEl.style.width = `${pct}%`;
     }
-    if (this.distanceValueEl) {
-      if (distanceM >= 1000) {
-        this.distanceValueEl.textContent = `${(distanceM / 1000).toFixed(2)} KM`;
-      } else {
-        this.distanceValueEl.textContent = `${Math.round(distanceM)} M`;
-      }
+
+    // 1. Elapsed Time
+    if (this.elapsedTimeValueEl) {
+      this.elapsedTimeValueEl.textContent = formatTime(elapsedTimeSec);
     }
-    if (this.timerValueEl && timeRemainingSec !== undefined) {
-      this.timerValueEl.textContent = `${Math.max(0, timeRemainingSec).toFixed(1)}s`;
-      if (timeRemainingSec <= 10) {
-        this.timerValueEl.style.color = RED;
+
+    // 2. Words Counter
+    if (this.wordsCounterValueEl) {
+      this.wordsCounterValueEl.textContent = `${wordsTyped} / ${totalWords}`;
+    }
+
+    // 3. Position Badge
+    if (this.positionBadgeEl) {
+      let posText = '1st';
+      let posColor = GOLD;
+      if (position === 1 || position === '1st') {
+        posText = '1st';
+        posColor = GOLD;
+      } else if (position === 2 || position === '2nd') {
+        posText = '2nd';
+        posColor = SILVER;
+      } else if (position === 3 || position === '3rd') {
+        posText = '3rd';
+        posColor = BRONZE;
       } else {
-        this.timerValueEl.style.color = CYAN;
+        posText = typeof position === 'number' ? `${position}th` : position;
+        posColor = '#94a3b8';
       }
+      this.positionBadgeEl.textContent = posText;
+      this.positionBadgeEl.style.color = posColor;
+      this.positionBadgeEl.style.textShadow = `0 0 12px ${posColor}88`;
+    }
+
+    // 4. Finish Distance
+    if (this.finishDistanceValueEl) {
+      const dist = Math.max(0, Math.round(finishDistanceM));
+      this.finishDistanceValueEl.textContent = `${dist} M`;
     }
   }
 
@@ -892,4 +985,4 @@ export class UIController {
   }
 }
 
-export { UIController as HUDController };
+export { UIController as HUDController, UIController as UIManager };

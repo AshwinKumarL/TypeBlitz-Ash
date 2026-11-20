@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { StraightWorld } from './straightRoad.js';
+import { StraightWorld, FINISH_LINE_Z } from './straightRoad.js';
 import { createFordAngliaCar, VehicleController, PLAYER_LANE_X } from './car.js';
 import { StraightChaseCamera } from './camera.js';
 import { SpeedEffects } from './speedEffects.js';
@@ -7,25 +7,24 @@ import { TypingEngine } from './typingEngine.js';
 import { WPMCalculator } from './wpmCalculator.js';
 import { AudioManager } from './audio.js';
 import { UIController } from './ui.js';
-
-export const CHALLENGE_DURATION_SEC = 60.0;
+import { BotManager } from './bots.js';
 
 export class Game {
   constructor() {
     this.canvas = document.getElementById('game-canvas');
     this.state = 'MENU'; // 'MENU' | 'PLAYING' | 'PAUSED' | 'FINISHED'
 
-    // Challenge Timing
-    this.timeRemaining = CHALLENGE_DURATION_SEC;
+    // Race Timing & Progress
+    this.elapsedTimeSec = 0;
     this.sessionStartTime = 0;
 
     // 1. Scene & Three.js Renderer
     this._initScene();
 
-    // 2. Straight Highway World (Centered Road, Continuous Terrain, Blue Sky)
+    // 2. Straight Highway World (4 Lanes, Finish Line Arch at FINISH_LINE_Z, Continuous Terrain)
     this.world = new StraightWorld(this.scene);
 
-    // 3. Player Car (Ford Anglia Model, Centered at x = 0)
+    // 3. Player Car (Ford Anglia Model, Centered at x = 0.0)
     const { container: carContainer } = createFordAngliaCar((container, wheels) => {
       if (this.car) {
         this.car.container.userData.wheels = wheels;
@@ -37,24 +36,27 @@ export class Game {
     this.car = new VehicleController(this.carMesh);
     this.car.reset();
 
-    // 4. Chase Camera
+    // 4. Competitor Bot Cars (Lamborghini, Mercedes-Benz AMG, Porsche 911)
+    this.botManager = new BotManager(this.scene);
+
+    // 5. Chase Camera
     this.chaseCamera = new StraightChaseCamera(this.camera, this.car);
     this.menuAngle = 0;
 
-    // 5. Dynamic Speed Effects (Wind Streaks)
+    // 6. Dynamic Speed Effects (Wind Streaks)
     this.speedEffects = new SpeedEffects(this.scene);
 
-    // 6. Audio System (Engine Hum, Mechanical Key Clicks, Typo Sounds, Fanfare)
+    // 7. Audio System (Engine Hum, Mechanical Key Clicks, Typo Sounds, Fanfare)
     this.audio = new AudioManager();
 
-    // 7. Typing Engine & WPM Calculator
+    // 8. Typing Engine & WPM Calculator
     this.typingEngine = new TypingEngine();
     this.wpmCalc = new WPMCalculator(3.5);
 
-    // 8. Modern UI Controller
+    // 9. Modern UI Controller
     this.ui = new UIController();
 
-    // 9. Clock
+    // 10. Clock
     this.clock = new THREE.Clock();
 
     // Bindings
@@ -119,6 +121,12 @@ export class Game {
       this.ui.updateSentenceText(next, 0);
     };
 
+    this.typingEngine.onFinish = () => {
+      if (this.state === 'PLAYING') {
+        this._finishChallenge();
+      }
+    };
+
     this.typingEngine.onFirstKey = () => {
       if (this.state === 'MENU') {
         this.startGame();
@@ -169,11 +177,12 @@ export class Game {
     this.audio.startEngine();
 
     this.state = 'PLAYING';
-    this.timeRemaining = CHALLENGE_DURATION_SEC;
+    this.elapsedTimeSec = 0;
     this.sessionStartTime = performance.now();
 
     this.typingEngine.setActive(true);
     this.wpmCalc.start(this.sessionStartTime);
+    this.botManager.reset();
 
     this.ui.hideMenu();
     this.ui.hidePause();
@@ -207,10 +216,11 @@ export class Game {
 
   restartGame() {
     this.state = 'PLAYING';
-    this.timeRemaining = CHALLENGE_DURATION_SEC;
+    this.elapsedTimeSec = 0;
     this.sessionStartTime = performance.now();
 
     this.car.reset();
+    this.botManager.reset();
     this.world.reset();
     this.chaseCamera.snap();
     this.speedEffects.reset();
@@ -230,6 +240,7 @@ export class Game {
   }
 
   _finishChallenge() {
+    if (this.state === 'FINISHED') return;
     this.state = 'FINISHED';
     this.typingEngine.setActive(false);
     this.audio.playLapComplete();
@@ -239,16 +250,19 @@ export class Game {
     const peakWpm = this.wpmCalc.getPeakWpm();
     const accuracy = this.wpmCalc.getAccuracy();
     const distance = this.car.position.z;
-    const totalChars = this.wpmCalc.totalAttemptedChars;
-    const sentencesCompleted = this.typingEngine.sentencesCompleted;
+    const progress = this.typingEngine.getProgress();
+    const rank = this.botManager.getLiveRank(distance);
 
     this.ui.showFinish({
+      position: rank,
+      placement: rank,
+      finishTimeSec: this.elapsedTimeSec,
       avgWpm,
       peakWpm,
       accuracy,
+      wordsTyped: progress.wordsTyped,
+      totalWords: progress.totalWords,
       distance,
-      totalChars,
-      sentencesCompleted,
     });
   }
 
@@ -273,49 +287,67 @@ export class Game {
       );
       this.camera.lookAt(0, 0.8, 0);
     } else if (this.state === 'PLAYING') {
-      // 1. Update Challenge Countdown Timer
-      this.timeRemaining -= dt;
-      if (this.timeRemaining <= 0) {
-        this.timeRemaining = 0;
-        this._finishChallenge();
-      }
+      // 1. Elapsed Time Progression
+      this.elapsedTimeSec += dt;
 
       // 2. Compute Live WPM and Accuracy
       const liveWpm = this.wpmCalc.getLiveWpm(now);
       const accuracy = this.wpmCalc.getAccuracy();
 
-      // 3. Update Vehicle Target Speed Based on WPM
+      // 3. Update Vehicle Target Speed Based on WPM & Physics Step
       this.car.updateTargetSpeed(liveWpm, accuracy);
       this.car.step(dt);
 
       const playerZ = this.car.position.z;
       const speedKmh = this.car.getSpeedKmh();
 
-      // 4. Update Infinite Straight Road & Continuous Scenery
+      // 4. Update Competitor Bots
+      this.botManager.update(dt, this.elapsedTimeSec, true);
+
+      // 5. Calculate Live Race Placement (1st, 2nd, 3rd, 4th)
+      const rank = this.botManager.getLiveRank(playerZ);
+
+      // 6. Update Straight Road & Continuous Scenery (including Finish Line Arch)
       this.world.update(playerZ);
 
-      // 5. Update Chase Camera with Dynamic FOV
+      // 7. Update Chase Camera with Dynamic FOV
       this.chaseCamera.update(dt, speedKmh);
 
-      // 6. Update High-Speed Wind Streaks
+      // 8. Update High-Speed Wind Streaks
       this.speedEffects.update(dt, playerZ, speedKmh);
 
-      // 7. Update Engine Sound Pitch
+      // 9. Update Engine Sound Pitch
       this.audio.updateEngine(speedKmh, false);
 
-      // 8. Update HUD Metrics
+      // 10. Update HUD Metrics
+      const progress = this.typingEngine.getProgress();
+      const finishDistM = Math.max(0, FINISH_LINE_Z - playerZ);
+
       this.ui.updateHUD({
         liveWpm,
         accuracy,
         speedKmh,
+        elapsedTimeSec: this.elapsedTimeSec,
+        wordsTyped: progress.wordsTyped,
+        totalWords: progress.totalWords,
+        position: rank,
+        finishDistanceM: finishDistM,
         distanceM: playerZ,
-        timeRemainingSec: this.timeRemaining,
-        sentenceIndex: this.typingEngine.currentSentenceIndex,
       });
+
+      // 11. Race Completion Condition:
+      // Player finishes when all passage words are typed OR player crosses FINISH_LINE_Z
+      if (this.typingEngine.isFinished || playerZ >= FINISH_LINE_Z) {
+        this._finishChallenge();
+      }
     } else if (this.state === 'FINISHED') {
-      // Coasting car after time runs out
+      // Coasting car after crossing finish line or completing words
       this.car.updateTargetSpeed(0, 100);
       this.car.step(dt);
+
+      // Bots continue coasting / finishing
+      this.botManager.update(dt, this.elapsedTimeSec, false);
+
       this.world.update(this.car.position.z);
       this.chaseCamera.update(dt, this.car.getSpeedKmh());
       this.speedEffects.update(dt, this.car.position.z, this.car.getSpeedKmh());
@@ -328,7 +360,11 @@ export class Game {
 
 // Auto-boot game when DOM is ready
 if (typeof document !== 'undefined') {
-  window.addEventListener('DOMContentLoaded', () => {
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', () => {
+      new Game();
+    });
+  } else {
     new Game();
-  });
+  }
 }

@@ -79,6 +79,11 @@ export class UIController {
     this.onRestart = null;
     this.onPauseClick = null;
     this.onMuteToggle = null;
+    this.onSelectMap = null;
+
+    // Track / Map Selection
+    this.selectedMapId = 'alpine';
+    this.mapButtons = [];
 
     this._init();
   }
@@ -406,26 +411,25 @@ export class UIController {
     this.typingContainerEl = el('div', {
       id: 'typing-box',
       style: {
-        width: 'auto',
-        maxWidth: '540px',
-        height: '46px',
-        maxHeight: '46px',
+        width: '100%',
+        maxWidth: '740px',
+        height: '68px',
+        maxHeight: '68px',
         overflow: 'hidden',
         background: 'rgba(15, 23, 42, 0.78)',
-        border: '1px solid rgba(56, 189, 248, 0.4)',
-        borderRadius: '23px',
-        padding: '0 24px',
-        backdropFilter: 'blur(16px)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 16px rgba(56, 189, 248, 0.15)',
+        border: '1px solid rgba(56, 189, 248, 0.35)',
+        borderRadius: '12px',
+        padding: '9px 22px',
+        backdropFilter: 'blur(14px)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 16px rgba(56, 189, 248, 0.12)',
         fontFamily: FONT_MONO,
-        fontSize: '22px',
-        lineHeight: '46px',
-        letterSpacing: '0.8px',
-        whiteSpace: 'nowrap',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
+        fontSize: '20px',
+        lineHeight: '25px',
+        letterSpacing: '0.6px',
+        textAlign: 'left',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        userSelect: 'none',
         transition: 'border-color 0.12s ease, box-shadow 0.12s ease',
       },
     });
@@ -618,6 +622,9 @@ export class UIController {
     card.appendChild(inst2);
     card.appendChild(inst3);
 
+    // Map Selector Component
+    const mapSelector = this._createMapSelectorUI();
+
     const startBtn = el('button', {
       textContent: 'START RACE',
       style: {
@@ -653,10 +660,162 @@ export class UIController {
     this.menuOverlay.appendChild(titleEl);
     this.menuOverlay.appendChild(subTitleEl);
     this.menuOverlay.appendChild(card);
+    this.menuOverlay.appendChild(mapSelector);
     this.menuOverlay.appendChild(startBtn);
     this.menuOverlay.appendChild(keyHint);
 
     this.container.appendChild(this.menuOverlay);
+  }
+
+  // -------------------------------------------------------------------------
+  // Map Selector UI Component
+  // -------------------------------------------------------------------------
+  _createMapSelectorUI() {
+    const wrapper = el('div', {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '10px',
+        width: '100%',
+        maxWidth: '580px',
+      },
+    });
+
+    const header = el('div', {
+      textContent: 'SELECT RACING ENVIRONMENT',
+      style: {
+        fontSize: '11px',
+        fontWeight: '800',
+        color: '#94a3b8',
+        letterSpacing: '2px',
+        textTransform: 'uppercase',
+      },
+    });
+    wrapper.appendChild(header);
+
+    const cardsRow = el('div', {
+      style: {
+        display: 'flex',
+        gap: '12px',
+        width: '100%',
+      },
+    });
+
+    const maps = [
+      { id: 'alpine', name: 'Alpine Valley', icon: '🏔️', badge: 'Default', desc: 'Sunny mountain pass' },
+      { id: 'forest', name: 'Redwood Forest', icon: '🌲', badge: 'Dense Foliage', desc: 'Misty giant canopy' },
+      { id: 'nightcity', name: 'Neon Metropolis', icon: '🌆', badge: 'Night City', desc: 'Cyberpunk midnight' },
+    ];
+
+    maps.forEach(m => {
+      const isSelected = this.selectedMapId === m.id;
+      const card = el('div', {
+        style: {
+          flex: '1',
+          background: isSelected ? 'rgba(56, 189, 248, 0.22)' : 'rgba(15, 23, 42, 0.65)',
+          border: isSelected ? '2px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: '12px',
+          padding: '12px 8px',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '5px',
+          backdropFilter: 'blur(8px)',
+          boxShadow: isSelected ? '0 0 16px rgba(56, 189, 248, 0.35)' : 'none',
+          transform: isSelected ? 'scale(1.03)' : 'scale(1.0)',
+          transition: 'all 0.15s ease',
+        },
+        onclick: (e) => {
+          e.stopPropagation();
+          this.setSelectedMap(m.id);
+          if (this.onSelectMap) this.onSelectMap(m.id);
+        },
+      });
+
+      card.onmouseenter = () => {
+        if (this.selectedMapId !== m.id) {
+          card.style.borderColor = 'rgba(56, 189, 248, 0.5)';
+          card.style.background = 'rgba(30, 41, 59, 0.7)';
+        }
+      };
+      card.onmouseleave = () => {
+        if (this.selectedMapId !== m.id) {
+          card.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+          card.style.background = 'rgba(15, 23, 42, 0.65)';
+        }
+      };
+
+      const iconEl = el('div', {
+        textContent: m.icon,
+        style: { fontSize: '24px' },
+      });
+
+      const nameEl = el('div', {
+        textContent: m.name,
+        style: {
+          fontFamily: FONT_ORBITRON,
+          fontSize: '12px',
+          fontWeight: '800',
+          color: '#f8fafc',
+          letterSpacing: '0.5px',
+          textAlign: 'center',
+        },
+      });
+
+      const badgeEl = el('div', {
+        textContent: m.badge,
+        style: {
+          fontSize: '9px',
+          fontWeight: '800',
+          letterSpacing: '1px',
+          textTransform: 'uppercase',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          background: isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)',
+          color: isSelected ? '#020617' : '#94a3b8',
+        },
+      });
+
+      const descEl = el('div', {
+        textContent: m.desc,
+        style: {
+          fontSize: '10px',
+          color: '#64748b',
+          textAlign: 'center',
+          marginTop: '2px',
+        },
+      });
+
+      card.appendChild(iconEl);
+      card.appendChild(nameEl);
+      card.appendChild(badgeEl);
+      card.appendChild(descEl);
+
+      cardsRow.appendChild(card);
+      this.mapButtons.push({ id: m.id, el: card, badgeEl });
+    });
+
+    wrapper.appendChild(cardsRow);
+    return wrapper;
+  }
+
+  setSelectedMap(mapId) {
+    this.selectedMapId = mapId;
+    if (this.mapButtons && this.mapButtons.length) {
+      this.mapButtons.forEach(item => {
+        const isSelected = item.id === mapId;
+        item.el.style.background = isSelected ? 'rgba(56, 189, 248, 0.22)' : 'rgba(15, 23, 42, 0.65)';
+        item.el.style.border = isSelected ? '2px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)';
+        item.el.style.boxShadow = isSelected ? '0 0 16px rgba(56, 189, 248, 0.35)' : 'none';
+        item.el.style.transform = isSelected ? 'scale(1.03)' : 'scale(1.0)';
+        if (item.badgeEl) {
+          item.badgeEl.style.background = isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)';
+          item.badgeEl.style.color = isSelected ? '#020617' : '#94a3b8';
+        }
+      });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -725,8 +884,11 @@ export class UIController {
       onclick: () => this.onRestart && this.onRestart(),
     });
 
+    const pauseMapSelector = this._createMapSelectorUI();
+
     this.pauseOverlay.appendChild(titleEl);
     this.pauseOverlay.appendChild(resumeBtn);
+    this.pauseOverlay.appendChild(pauseMapSelector);
     this.pauseOverlay.appendChild(restartBtn);
 
     this.container.appendChild(this.pauseOverlay);
@@ -903,35 +1065,15 @@ export class UIController {
   }
 
   // -------------------------------------------------------------------------
-  // Update Live Sentence Text (Focused Sliding Window: Only 3-4 Words At A Time)
-  // Keeps the typing ribbon ultra-clean, minimal, and uncluttered on a single line!
+  // Update Live Sentence Text (Static & Normal Layout Like Typing Websites)
+  // Words remain fixed in place without sliding; the cursor advances across them!
   // -------------------------------------------------------------------------
   updateSentenceText(sentence, charIndex) {
     if (!this.typedSpan || !this.cursorSpan || !this.remainingSpan) return;
 
-    // Find the start index of the currently active word
-    let wordStart = 0;
-    if (charIndex > 0) {
-      const prevSpace = sentence.lastIndexOf(' ', charIndex - 1);
-      wordStart = prevSpace === -1 ? 0 : prevSpace + 1;
-    }
-
-    // Look ahead 3 to 4 words from the active character
-    let spacesFound = 0;
-    let windowEnd = sentence.length;
-    for (let i = charIndex; i < sentence.length; i++) {
-      if (sentence[i] === ' ') {
-        spacesFound++;
-        if (spacesFound >= 4) {
-          windowEnd = i;
-          break;
-        }
-      }
-    }
-
-    const typedPart = sentence.slice(wordStart, charIndex);
+    const typedPart = sentence.slice(0, charIndex);
     const cursorChar = charIndex < sentence.length ? sentence[charIndex] : '';
-    const remainingPart = charIndex < sentence.length ? sentence.slice(charIndex + 1, windowEnd) : '';
+    const remainingPart = charIndex < sentence.length ? sentence.slice(charIndex + 1) : '';
 
     this.typedSpan.textContent = typedPart;
 
@@ -942,6 +1084,17 @@ export class UIController {
     }
 
     this.remainingSpan.textContent = remainingPart;
+
+    // Smooth discrete vertical auto-scroll only when advancing past line 2
+    if (this.typingContainerEl && this.cursorSpan) {
+      const cursorOffsetTop = this.cursorSpan.offsetTop;
+      const singleLineH = 25;
+      if (cursorOffsetTop > singleLineH + 14) {
+        this.typingContainerEl.scrollTop = cursorOffsetTop - 10;
+      } else {
+        this.typingContainerEl.scrollTop = 0;
+      }
+    }
 
     // Update progress bar
     if (this.progressBarFillEl && sentence.length > 0) {

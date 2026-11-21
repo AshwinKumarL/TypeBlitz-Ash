@@ -178,6 +178,7 @@ export class VehicleController {
     // Nitro Boost surge state
     this.boostTimeRemaining = 0;
     this.boostBonusSpeed = 0;
+    this.suspensionPitch = 0;
 
     this.container.position.copy(this.position);
     this.container.rotation.set(0, 0, 0);
@@ -204,6 +205,15 @@ export class VehicleController {
     this.speed = Math.min(this.maxSpeed + 8.0, this.speed + 4.5);
   }
 
+  // Speed penalty applied on typing error (immediate stumble & speed drop)
+  applyMistakePenalty(penaltyKmh = 14) {
+    const penaltyMs = penaltyKmh / 3.6;
+    this.speed = Math.max(0, this.speed - penaltyMs);
+    this.boostTimeRemaining = 0;
+    this.boostBonusSpeed = 0;
+    this.suspensionPitch = -0.045; // brief visual nose dip
+  }
+
   reset() {
     this.position.set(PLAYER_LANE_X, 0, 0);
     this.speed = 0;
@@ -211,6 +221,7 @@ export class VehicleController {
     this.wheelSpin = 0;
     this.boostTimeRemaining = 0;
     this.boostBonusSpeed = 0;
+    this.suspensionPitch = 0;
     this._syncMesh();
   }
 
@@ -251,6 +262,12 @@ export class VehicleController {
     this.position.x = PLAYER_LANE_X; // Guaranteed locked to center
     this.position.y = 0; // Flat on ground
 
+    // Smooth recovery of suspension pitch
+    if (this.suspensionPitch) {
+      this.suspensionPitch *= 0.88;
+      if (Math.abs(this.suspensionPitch) < 0.001) this.suspensionPitch = 0;
+    }
+
     // Wheel spin rotation
     const spinDelta = (this.speed * dt) / this.wheelRadius;
     this.wheelSpin += spinDelta;
@@ -260,7 +277,7 @@ export class VehicleController {
 
   _syncMesh() {
     this.container.position.copy(this.position);
-    this.container.rotation.set(0, 0, 0);
+    this.container.rotation.set(this.suspensionPitch || 0, 0, 0);
 
     const wheels = this.container.userData.wheels;
     if (wheels) {

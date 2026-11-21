@@ -23,8 +23,9 @@ export class Game {
     // 1. Scene & Three.js Renderer
     this._initScene();
 
-    // 2. Straight Highway World (4 Lanes, Finish Line Arch at FINISH_LINE_Z, Continuous Terrain)
-    this.world = new StraightWorld(this.scene);
+    // 2. Straight Highway World (4 Lanes, Finish Line Arch at FINISH_LINE_Z, Continuous Terrain, 3 Playable Maps)
+    this.currentMapId = 'alpine';
+    this.world = new StraightWorld(this.scene, this.currentMapId);
 
     // 3. Player Car (Overhauled Aerodynamic Low-Poly GT Supercar with Dual Exhausts)
     this.carMesh = createPlayerSupercarMesh(0xe11d48, 0x0f172a);
@@ -131,7 +132,7 @@ export class Game {
         this.startGame();
       }
       this.wpmCalc.recordKeystroke(true, nowMs);
-      this.audio.playKeyClick();
+      this.audio.playKeyClick(key === ' ');
       this.ui.updateSentenceText(this.typingEngine.getCurrentSentence(), charIndex);
     };
 
@@ -142,6 +143,12 @@ export class Game {
       this.wpmCalc.recordKeystroke(false, nowMs);
       this.audio.playKeyError();
       this.ui.flashTypo();
+
+      // Immediate speed penalty on typing mistake (drop ~14 km/h & cancel active boost)
+      this.car.applyMistakePenalty(14);
+      if (this.speedEffects) {
+        this.speedEffects.spawnBrakePuff(this.car.position.x, this.car.position.z);
+      }
     };
 
     this.typingEngine.onSentenceComplete = (completed, next, count, nowMs) => {
@@ -167,7 +174,7 @@ export class Game {
         this.ui.showBoostBanner(level, duration);
 
         if (this.audio.playBoostSound) {
-          this.audio.playBoostSound();
+          this.audio.playBoostSound(level);
         }
       }
     };
@@ -190,6 +197,13 @@ export class Game {
     this.ui.onRestart = () => this.restartGame();
     this.ui.onPauseClick = () => this.togglePause();
     this.ui.onMuteToggle = (muted) => this.audio.setMuted(muted);
+    this.ui.onSelectMap = (mapId) => {
+      this.currentMapId = mapId;
+      this.world.setMap(mapId);
+      if (this.audio && this.audio.playKeyClick) {
+        this.audio.playKeyClick(true);
+      }
+    };
   }
 
   _bindWindowEvents() {

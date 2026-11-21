@@ -25,15 +25,16 @@ export class BotManager {
         laneIndex: 2,
         x: LANE_CENTERS[2], // +4.8
         meshFactory: () => createLamborghiniMesh(0xffb800, 0x111111),
-        baseSpeed: 21.0,      // ~75 km/h (~54 WPM equivalent)
-        minFloorSpeed: 17.5,  // ~63 km/h (~45 WPM floor) - NEVER slows below this!
-        acceleration: 14.0,
-        leadOffset: 1.4,      // Aggressive rival fighting for lead
-        variationAmp: 1.8,
+        baseSpeed: 14.2,      // ~51 km/h (~39 WPM equivalent)
+        minFloorSpeed: 11.2,  // ~40 km/h (~31 WPM floor)
+        acceleration: 9.5,
+        leadOffset: 1.2,      // Rival contesting near lead
+        variationAmp: 1.5,
         variationFreq: 0.85,
         variationPhase: 0.0,
         exhaustOffsets: [
-          { x: 0.0, y: 0.38, z: -1.95, radius: 0.16, length: 1.6 },
+          { x: -0.36, y: 0.32, z: -1.95, radius: 0.10, length: 1.5 },
+          { x: 0.36, y: 0.32, z: -1.95, radius: 0.10, length: 1.5 },
         ],
         flameColors: {
           inner: 0xfffbeb,
@@ -49,11 +50,11 @@ export class BotManager {
         laneIndex: 0,
         x: LANE_CENTERS[0], // -4.8
         meshFactory: () => createMercedesMesh(0xd1d5db, 0x1a1a1a),
-        baseSpeed: 18.5,      // ~67 km/h (~48 WPM equivalent)
-        minFloorSpeed: 15.5,  // ~56 km/h (~40 WPM floor) - NEVER slows below this!
-        acceleration: 12.0,
-        leadOffset: -0.6,     // Flanking contender on the left door
-        variationAmp: 1.4,
+        baseSpeed: 12.8,      // ~46 km/h (~35 WPM equivalent)
+        minFloorSpeed: 10.0,  // ~36 km/h (~27 WPM floor)
+        acceleration: 8.5,
+        leadOffset: -0.5,     // Flanking contender on the left door
+        variationAmp: 1.2,
         variationFreq: 0.65,
         variationPhase: 2.1,
         exhaustOffsets: [
@@ -74,11 +75,11 @@ export class BotManager {
         laneIndex: 3,
         x: LANE_CENTERS[3], // +9.2
         meshFactory: () => createPorscheMesh(0xdc2626, 0x1f2937),
-        baseSpeed: 20.0,      // ~72 km/h (~51 WPM equivalent)
-        minFloorSpeed: 16.5,  // ~60 km/h (~43 WPM floor) - NEVER slows below this!
-        acceleration: 13.5,
-        leadOffset: -1.6,     // Drafting stalker making tactical surges
-        variationAmp: 2.0,
+        baseSpeed: 13.6,      // ~49 km/h (~37 WPM equivalent)
+        minFloorSpeed: 10.6,  // ~38 km/h (~29 WPM floor)
+        acceleration: 9.0,
+        leadOffset: -1.2,     // Drafting stalker making surges
+        variationAmp: 1.6,
         variationFreq: 1.05,
         variationPhase: 4.3,
         exhaustOffsets: [
@@ -129,17 +130,36 @@ export class BotManager {
         flameGroup,
         flamePipes,
         sparkLevel: cfg.sparkLevel,
+        // Mistake & Stumble System
+        isStumbling: false,
+        stumbleTimeRemaining: 0,
+        mistakeCooldown: THREE.MathUtils.randFloat(7.0, 16.0),
       });
     });
   }
 
   // -------------------------------------------------------------------------
-  // Create Turbo Boost Flame Group for a Bot Mesh
+  // Create Turbo Boost Dual Exhaust Flame Group for a Bot Mesh
+  // Always guarantees TWO dual exhaust flames (Left & Right), matching player's twin flames!
   // -------------------------------------------------------------------------
   _createBotFlames(cfg, carMesh) {
     const flameGroup = new THREE.Group();
     const flamePipes = [];
-    const offsets = cfg.tailpipeOffsets || cfg.exhaustOffsets || [{ x: 0, y: 0.32, z: -2.1, radius: 0.1, length: 1.4 }];
+
+    // Always guarantee TWO dual exhaust flames (Left & Right), matching player's twin flames!
+    const rawOffsets = cfg.tailpipeOffsets || cfg.exhaustOffsets;
+    let offsets;
+    if (Array.isArray(rawOffsets) && rawOffsets.length >= 2) {
+      offsets = rawOffsets;
+    } else {
+      const z = (rawOffsets && rawOffsets[0] && typeof rawOffsets[0].z === 'number') ? rawOffsets[0].z : -2.25;
+      const y = (rawOffsets && rawOffsets[0] && typeof rawOffsets[0].y === 'number') ? rawOffsets[0].y : 0.30;
+      offsets = [
+        { x: -0.36, y, z },
+        { x: 0.36, y, z },
+      ];
+    }
+
     const flameColors = cfg.flameColors || { inner: 0xfffbeb, outer: 0xf59e0b, emissive: 0xd97706 };
 
     offsets.forEach(pos => {
@@ -147,9 +167,9 @@ export class BotManager {
       pipeGroup.position.set(pos.x, pos.y, pos.z);
 
       // Inner Core Flame (bright hot plasma core)
-      const coreGeo = new THREE.ConeGeometry((pos.radius || 0.1) * 0.75, (pos.length || 1.4) * 0.65, 7);
+      const coreGeo = new THREE.ConeGeometry(0.12, 1.2, 7);
       coreGeo.rotateX(-Math.PI / 2); // point backwards (-Z)
-      coreGeo.translate(0, 0, -(pos.length || 1.4) * 0.32);
+      coreGeo.translate(0, 0, -0.6);
       const coreMat = new THREE.MeshBasicMaterial({
         color: flameColors.inner,
         transparent: true,
@@ -159,16 +179,16 @@ export class BotManager {
       pipeGroup.add(coreMesh);
 
       // Outer Fiery Cone (roaring colored jet flame)
-      const outerGeo = new THREE.ConeGeometry((pos.radius || 0.1) * 1.45, pos.length || 1.4, 7);
+      const outerGeo = new THREE.ConeGeometry(0.25, 1.75, 7);
       outerGeo.rotateX(-Math.PI / 2);
-      outerGeo.translate(0, 0, -(pos.length || 1.4) * 0.5);
+      outerGeo.translate(0, 0, -0.875);
       const outerMat = new THREE.MeshStandardMaterial({
         color: flameColors.outer,
         emissive: flameColors.emissive,
-        emissiveIntensity: 4.5,
+        emissiveIntensity: 4.8,
         flatShading: true,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.90,
       });
       const outerMesh = new THREE.Mesh(outerGeo, outerMat);
       pipeGroup.add(outerMesh);
@@ -217,6 +237,9 @@ export class BotManager {
         bot.flamePipes = flamePipes;
         bot.sparkLevel = def.sparkLevel || 2;
         bot.wheelRadius = newMesh.userData.wheelRadius || 0.295;
+        bot.isStumbling = false;
+        bot.stumbleTimeRemaining = 0;
+        bot.mistakeCooldown = THREE.MathUtils.randFloat(7.0, 16.0);
       }
     });
   }
@@ -239,6 +262,11 @@ export class BotManager {
         bot.flameGroup.visible = false;
       }
 
+      // Reset mistake & stumble state
+      bot.isStumbling = false;
+      bot.stumbleTimeRemaining = 0;
+      bot.mistakeCooldown = THREE.MathUtils.randFloat(7.0, 16.0);
+
       // Reset wheel rotations
       this._spinWheels(bot, 0);
     });
@@ -260,7 +288,41 @@ export class BotManager {
         // Dynamic micro-wave for organic engine throttle variations
         const wave = Math.sin(raceTimeSec * bot.variationFreq + bot.variationPhase) * bot.variationAmp;
 
-        // 1. Bot Turbo Boost Logic
+        // 1. Bot Mistake / Stumble Logic (Simulated missed shifts & errors under pressure)
+        if (bot.isStumbling) {
+          bot.stumbleTimeRemaining -= dt;
+          if (bot.stumbleTimeRemaining <= 0) {
+            bot.isStumbling = false;
+            bot.stumbleTimeRemaining = 0;
+            bot.mesh.position.x = bot.laneX;
+          }
+        } else {
+          bot.mistakeCooldown -= dt;
+          if (bot.mistakeCooldown <= 0 && raceTimeSec > 3.0) {
+            // Trigger bot mistake!
+            bot.isStumbling = true;
+            bot.stumbleTimeRemaining = THREE.MathUtils.randFloat(1.3, 2.1);
+            bot.mistakeCooldown = THREE.MathUtils.randFloat(10.0, 22.0);
+
+            // Immediate speed penalty: drop ~14-18 km/h (3.8 - 5.0 m/s)
+            const penalty = THREE.MathUtils.randFloat(3.8, 5.0);
+            bot.speed = Math.max(bot.minFloorSpeed * 0.65, bot.speed - penalty);
+
+            // Mistake immediately cancels boost
+            if (bot.isBoosting) {
+              bot.isBoosting = false;
+              bot.boostTimeRemaining = 0;
+              if (bot.flameGroup) bot.flameGroup.visible = false;
+            }
+
+            // Spawn brake tire smoke puff on the track
+            if (speedEffects && typeof speedEffects.spawnBrakePuff === 'function') {
+              speedEffects.spawnBrakePuff(bot.laneX, bot.mesh.position.z);
+            }
+          }
+        }
+
+        // 2. Bot Turbo Boost Logic
         if (bot.isBoosting) {
           bot.boostTimeRemaining -= dt;
           if (bot.flameGroup) {
@@ -292,17 +354,17 @@ export class BotManager {
           }
         } else {
           bot.boostCooldown -= dt;
-          // Trigger bot boost if cooldown expired and either slightly behind player or in pack
-          if (bot.boostCooldown <= 0 && raceTimeSec > 3.0) {
+          // Trigger bot boost if cooldown expired and not currently stumbling
+          if (!bot.isStumbling && bot.boostCooldown <= 0 && raceTimeSec > 3.0) {
             bot.isBoosting = true;
             bot.boostTimeRemaining = THREE.MathUtils.randFloat(2.2, 3.4);
             if (bot.flameGroup) bot.flameGroup.visible = true;
           }
         }
 
-        // 2. Target Speed Calculation with Strict Fair Speed Floor
+        // 3. Target Speed Calculation with Strict Fair Speed Floor
         // If the player stops or is bad at typing, the bots keep moving at or above minFloorSpeed.
-        const minFloor = bot.minFloorSpeed; // 15.5 - 17.5 m/s (~56 - 63 km/h)
+        const minFloor = bot.minFloorSpeed; // 10.0 - 11.2 m/s (~36 - 40 km/h)
 
         if (playerSpeed > 1.0) {
           // Player is driving: Bot adjusts dynamically to player's velocity & relative distance
@@ -340,8 +402,13 @@ export class BotManager {
           bot.targetSpeed = bot.baseSpeed;
         }
 
+        // If bot is stumbling from a mistake, throttle target speed down
+        if (bot.isStumbling) {
+          bot.targetSpeed = Math.max(bot.minFloorSpeed * 0.70, bot.targetSpeed * 0.72);
+        }
+
         // Apply bot turbo boost speed surge
-        if (bot.isBoosting) {
+        if (bot.isBoosting && !bot.isStumbling) {
           bot.targetSpeed += 6.5; // +24 km/h boost surge
         }
 
@@ -355,7 +422,13 @@ export class BotManager {
 
       // Move forward along the assigned lane (+Z)
       bot.mesh.position.z += bot.speed * dt;
-      bot.mesh.position.x = bot.laneX; // strictly locked to its own highway lane
+      if (bot.isStumbling) {
+        // High frequency chassis wobble while recovering from missed shift
+        const wobbleX = Math.sin(raceTimeSec * 24) * 0.14;
+        bot.mesh.position.x = bot.laneX + wobbleX;
+      } else {
+        bot.mesh.position.x = bot.laneX; // strictly locked to its own highway lane
+      }
       bot.mesh.position.y = 0;
 
       // Wheel rotation

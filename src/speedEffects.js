@@ -142,6 +142,21 @@ export class SpeedEffects {
     p.mesh.visible = true;
   }
 
+  // Spawn visual brake tire smoke puffs on mistake / stumble
+  spawnBrakePuff(carX, carZ) {
+    [-0.72, 0.72].forEach(xOff => {
+      this._spawnSmokePuff(
+        carX + xOff,
+        0.18,
+        carZ - 1.2,
+        THREE.MathUtils.randFloat(-0.6, 0.6),
+        THREE.MathUtils.randFloat(0.4, 0.8),
+        -2.5,
+        0.55
+      );
+    });
+  }
+
   // -------------------------------------------------------------------------
   // 3. Nitro Boost Dual Exhaust Flames
   // -------------------------------------------------------------------------
